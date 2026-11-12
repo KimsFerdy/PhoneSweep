@@ -33,6 +33,17 @@ void AppSession::Clear()
     ++m_version;
 }
 
+void AppSession::LoadFake(std::vector<AppInfo> apps)
+{
+    Clear();
+    m_apps = std::move(apps);
+    {
+        std::lock_guard l(m_scan->mutex);
+        m_scan->state = State::Done;
+    }
+    ++m_version;
+}
+
 void AppSession::Start(JobSystem& jobs, std::shared_ptr<const AdbClient> adb, std::string serial, int deviceSdk)
 {
     Cancel();

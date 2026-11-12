@@ -44,6 +44,7 @@ add_library(PhoneSweepCore STATIC
     src/scan/FileStore.cpp
     src/scan/ScanSession.cpp
     src/scan/FakeFiles.cpp
+    src/scan/FakeApps.cpp
     src/util/Process.cpp
     src/thumbs/Exif.cpp
     src/thumbs/ImageOps.cpp

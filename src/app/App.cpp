@@ -5,6 +5,7 @@
 #include "adb/AdbClient.h"
 #include "adb/Device.h"
 #include "platform/Platform.h"
+#include "scan/FakeApps.h"
 #include "scan/FakeFiles.h"
 #include "nuke/Nuker.h"
 #include "transfer/LocalPath.h"
@@ -615,6 +616,7 @@ void App::Frame()
         if (m_opts.fake != FakeScenario::None) {
             m_files.SetVolumes(FakeVolumes());
             m_files.Append(FakeFiles(4000));
+            m_apps.LoadFake(FakeApps());
         } else if (m_settings.autoScan && m_ctx.ActiveConnected()) {
             m_ctx.requestScan = true;
             m_ctx.requestAppScan = true;

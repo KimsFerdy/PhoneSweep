@@ -26,6 +26,8 @@ public:
     void Start(JobSystem& jobs, std::shared_ptr<const AdbClient> adb, std::string serial, int deviceSdk);
     void Cancel();
     void Clear();
+    // Demo mode (--fake): show a fixed app list without a phone.
+    void LoadFake(std::vector<AppInfo> apps);
 
     // UI thread. Returns true when apps/labels changed.
     bool Pump(JobSystem& jobs);
