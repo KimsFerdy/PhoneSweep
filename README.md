@@ -76,7 +76,12 @@ PhoneSweep was built around one rule: **you never lose something by accident.**
 
 ## Getting started
 
-1. **Download** the latest `PhoneSweep-…-win64.zip` from [Releases](https://github.com/KimsFerdy/PhoneSweep/releases/latest) and unzip it anywhere. There is nothing to install.
+1. **Download** PhoneSweep from [Releases](https://github.com/KimsFerdy/PhoneSweep/releases/latest):
+   - `PhoneSweep-…-setup.exe`: the usual installer (Start menu shortcut, uninstaller; no admin needed).
+   - `PhoneSweep-…-x64.msi`: for managed PCs (installs for all users).
+   - `PhoneSweep-…-win64.zip`: portable, just unzip and run.
+
+   Windows SmartScreen may warn the first time because the app isn't code-signed yet: click **More info → Run anyway**.
 2. **On your phone**, turn on USB debugging:
    Settings → About phone → tap **Build number** 7 times, then Settings → Developer options → turn on **USB debugging**.
    (On Samsung: Settings → About phone → Software information → Build number.)

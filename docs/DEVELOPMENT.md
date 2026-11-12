@@ -9,8 +9,16 @@ Requirements: Visual Studio 2022 with *Desktop development with C++* (ships MSVC
 ```powershell
 .\build.ps1                    # configure + build + test (debug)
 .\build.ps1 -Config release    # optimised, static C++ runtime (runs without the VC++ redistributable)
-.\package.ps1                  # release build -> dist\PhoneSweep-<version>-win64.zip
+.\package.ps1                  # release build -> dist\ zip + setup.exe + msi
+.\package.ps1 -NoBuild         # package the existing release build
 ```
+
+`package.ps1` stages the app with `adb` (from the Android SDK's platform-tools), zips it, and builds the installers when the tools are installed:
+
+- **setup.exe**: [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`), script `installer\PhoneSweep.iss`. Per-user by default, all users optional.
+- **msi**: [WiX Toolset 5](https://wixtoolset.org) (`dotnet tool install --global wix --version 5.0.2`, then `wix extension add --global WixToolset.UI.wixext/5.0.2`), source `installer\PhoneSweep.wxs`. Per-machine, validated with `wix msi validate`.
+
+When releasing a new version, bump it in `CMakeLists.txt`, `src/app/Version.h`, `res/PhoneSweep.rc` and `res/PhoneSweep.manifest`. Keep the `UpgradeCode` in the `.wxs` and the `AppId` in the `.iss` unchanged so installers upgrade in place.
 
 `build.ps1` loads the MSVC environment itself and uses VS's bundled vcpkg unless `VCPKG_ROOT` is set. Dependencies come from `vcpkg.json` (manifest mode): imgui (docking, dx11, win32, freetype), stb, nlohmann-json, doctest.
 

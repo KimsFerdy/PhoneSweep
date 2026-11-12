@@ -1,0 +1,39 @@
+<!--
+  WiX Toolset v5 MSI for PhoneSweep (https://wixtoolset.org).
+  Built by package.ps1:
+    wix build installer\PhoneSweep.wxs -arch x64 -ext WixToolset.UI.wixext
+              -d Version=1.0.0 -d SourceDir=<staged folder> -o dist\PhoneSweep-1.0.0-x64.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="PhoneSweep" Manufacturer="Kimscode Studio" Version="$(Version)"
+           UpgradeCode="{3B6E1A42-7D2C-4E8F-A5B1-9C0D4F2E6A13}" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of PhoneSweep is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon.exe" SourceFile="..\res\PhoneSweep.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/KimsFerdy/PhoneSweep" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/KimsFerdy/PhoneSweep/issues" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/KimsFerdy/PhoneSweep/releases" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="PhoneSweep">
+        <!-- Everything from the staged release folder (exe, fonts, icons, platform-tools, docs). -->
+        <Files Include="$(SourceDir)\**">
+          <Exclude Files="$(SourceDir)\PhoneSweep.exe" />
+        </Files>
+        <!-- The exe carries the Start menu shortcut (exe = key path, as the ICE rules expect). -->
+        <Component Id="MainExecutable">
+          <File Id="PhoneSweepExe" Source="$(SourceDir)\PhoneSweep.exe" KeyPath="yes">
+            <Shortcut Id="AppShortcut" Directory="ProgramMenuFolder" Name="PhoneSweep"
+                      Description="Scan, save and clean an Android phone" WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon.exe" Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+  </Package>
+</Wix>

@@ -68,6 +68,31 @@ domain/MIT), nlohmann/json (MIT), FreeType (FTL).
     Compress-Archive -Path $stage -DestinationPath $zip
     $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
     "Packaged $zip ($size MB)"
+
+    # Installers (skipped with a note when the tool isn't installed).
+    $stageFull = (Resolve-Path $stage).Path
+    $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+    if (-not $iscc) { $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" }
+    if (Test-Path $iscc) {
+        & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$stageFull" installer\PhoneSweep.iss
+        if ($LASTEXITCODE) { throw 'Inno Setup failed' }
+        "Built dist\PhoneSweep-$version-setup.exe"
+    } else {
+        'Inno Setup not found (winget install JRSoftware.InnoSetup): setup.exe skipped'
+    }
+    $wix = (Get-Command wix -ErrorAction SilentlyContinue).Source
+    if (-not $wix) { $wix = "$env:USERPROFILE\.dotnet\tools\wix.exe" }
+    if (Test-Path $wix) {
+        Push-Location installer
+        try {
+            & $wix build PhoneSweep.wxs -arch x64 -ext WixToolset.UI.wixext -d "Version=$version" -d "SourceDir=$stageFull" -o "..\dist\PhoneSweep-$version-x64.msi"
+            if ($LASTEXITCODE) { throw 'WiX failed' }
+        } finally { Pop-Location }
+        Remove-Item -Force -ErrorAction SilentlyContinue "dist\PhoneSweep-$version-x64.wixpdb"
+        "Built dist\PhoneSweep-$version-x64.msi"
+    } else {
+        'WiX not found (dotnet tool install --global wix --version 5.0.2): msi skipped'
+    }
 } finally {
     Pop-Location
 }
