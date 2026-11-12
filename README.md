@@ -111,6 +111,13 @@ No. Everything works with normal USB debugging.
 **The phone isn't showing up.**
 Check that USB debugging is on, that the cable supports data (not just charging), and that you tapped *Allow* on the phone. Try another USB port. If it still doesn't work, please [open an issue](https://github.com/KimsFerdy/PhoneSweep/issues).
 
+## What's next
+
+- **v1.1 – v1.9:** quality-of-life updates: polish, speed and fixes for what you report.
+- **v2.0:** upload to Google Drive, an automatic Nuke queue for files you haven't used in a while, PhoneSweep apps for Android and iPhone, PC Sweep for Windows, macOS and Linux, and PhoneSweep Watcher.
+
+Read the full [roadmap](docs/ROADMAP.md).
+
 ## Credits
 
 Made by **Kims Ferdy** and his humble friend **Claude**.
