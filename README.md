@@ -42,7 +42,7 @@ Works with any Android phone (Samsung, Pixel, Xiaomi, OPPO, Motorola, ...) over 
 - Put a backup back on the phone (or on a new phone) at any time.
 
 **Clean up safely**
-- **Duplicate finder:** identical files found by content, not by name. One copy of each always stays.
+- **Duplicate finder:** identical files found by content, not by name. One copy of each always stays. Click a group to see every copy side by side (photos, video frames, music you can play, text files) and choose which ones to keep.
 - **Junk sweep:** thumbnail caches, app caches, leftovers of uninstalled apps, old statuses and logs, sorted into "safe" and "review".
 - **Compress** big camera videos and photos (dates, location and rotation kept). Choose whether the smaller copy goes on the phone, the PC, or both.
 - **Nuke:** plan a big clean-up, preview exactly what will happen, then confirm.
@@ -58,6 +58,9 @@ Works with any Android phone (Samsung, Pixel, Xiaomi, OPPO, Motorola, ...) over 
 
 **No cable needed**
 - Switch a connected phone to Wi-Fi with one click, or pair a phone running Android 11 or newer with a code.
+
+**Always up to date**
+- Settings → Updates checks for a new version, shows what changed, then downloads it, installs it and reopens PhoneSweep for you (setup.exe and msi versions).
 
 <p align="center">
   <img src="docs/images/home.png" width="420" alt="Connecting a phone">
@@ -97,7 +100,10 @@ PhoneSweep was built around one rule: **you never lose something by accident.**
 ## Questions
 
 **Is my data sent anywhere?**
-No. PhoneSweep talks only to your phone and your PC. Backups, reports and settings stay on your computer. "Ask AI" only copies text to your clipboard; you decide where to paste it.
+No. PhoneSweep talks to your phone and your PC. Backups, reports and settings stay on your computer. "Ask AI" only copies text to your clipboard; you decide where to paste it. The only thing that goes online is the update check: it asks GitHub which version is the newest (nothing about you or your phone is sent), and you can turn it off in Settings → Updates.
+
+**How do I update?**
+If you installed with the setup.exe or the msi: Settings → Updates → Download update → Restart and install. PhoneSweep also lets you know at startup when a new version is out. With the portable zip, download the new zip and unzip it over the old folder.
 
 **Where do my backups go?**
 `Documents\PhoneSweep\<phone>_<date>\` by default, mirroring the folders on your phone. You can change it in Settings → Backup.
@@ -113,7 +119,8 @@ Check that USB debugging is on, that the cable supports data (not just charging)
 
 ## What's next
 
-- **v1.1 – v1.9:** quality-of-life updates: polish, speed and fixes for what you report.
+- **v1.1:** compare duplicate copies side by side, and updates from inside the app.
+- **v1.2 – v1.9:** more quality-of-life updates: polish, speed and fixes for what you report.
 - **v2.0:** upload to Google Drive, an automatic Nuke queue for files you haven't used in a while, PhoneSweep apps for Android and iPhone, PC Sweep for Windows, macOS and Linux, and PhoneSweep Watcher.
 
 Read the full [roadmap](docs/ROADMAP.md).

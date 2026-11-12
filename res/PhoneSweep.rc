@@ -3,8 +3,8 @@
 
 // File properties shown by Windows Explorer (keep in sync with src/app/Version.h).
 1 VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
 FILEFLAGSMASK 0x3fL
 FILEFLAGS 0x0L
 FILEOS 0x40004L
@@ -17,12 +17,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Kimscode Studio"
             VALUE "FileDescription", "PhoneSweep - scan, save and clean an Android phone"
-            VALUE "FileVersion", "1.0.0"
+            VALUE "FileVersion", "1.1.0"
             VALUE "InternalName", "PhoneSweep"
             VALUE "LegalCopyright", "Kims Ferdy"
             VALUE "OriginalFilename", "PhoneSweep.exe"
             VALUE "ProductName", "PhoneSweep"
-            VALUE "ProductVersion", "1.0.0"
+            VALUE "ProductVersion", "1.1.0"
         END
     END
     BLOCK "VarFileInfo"

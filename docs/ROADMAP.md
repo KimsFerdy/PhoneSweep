@@ -6,7 +6,12 @@ Where PhoneSweep is going. Plans can change; ideas and votes are welcome on the 
 
 Scan, save and clean an Android phone from a Windows PC: storage map, verified backups (plus zip archives and restore), duplicate finder, junk sweep, photo/video compression, Nuke with Nuke Protector, app insights (risk flags, live CPU/RAM, battery use, background restrictions), Ask AI, Wi-Fi connection, and installers. See the [v1.0.0 release](https://github.com/KimsFerdy/PhoneSweep/releases/tag/v1.0.0).
 
-## v1.1 – v1.9: quality of life
+## v1.1
+
+- **Compare duplicates side by side:** click a duplicate group to see every copy next to each other: photos, video frames, music you can play right there, and text files rendered as text. Keep one copy, several, or all of them.
+- **Updates from inside the app:** Settings → Updates checks for new versions (also quietly once a day at startup, can be turned off), shows the release notes, downloads the right installer, checks it against GitHub's checksum, installs it and reopens PhoneSweep.
+
+## v1.2 – v1.9: quality of life
 
 The 1.x updates are about polish rather than big new features: smoother everyday use, faster scans and transfers, clearer wording, fixes for problems people report, and small improvements across the app. Each release lists what changed in its release notes.
 

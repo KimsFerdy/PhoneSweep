@@ -2,7 +2,7 @@
   WiX Toolset v5 MSI for PhoneSweep (https://wixtoolset.org).
   Built by package.ps1:
     wix build installer\PhoneSweep.wxs -arch x64 -ext WixToolset.UI.wixext
-              -d Version=1.0.0 -d SourceDir=<staged folder> -o dist\PhoneSweep-1.0.0-x64.msi
+              -d Version=1.1.0 -d SourceDir=<staged folder> -o dist\PhoneSweep-1.1.0-x64.msi
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="PhoneSweep" Manufacturer="Kimscode Studio" Version="$(Version)"
@@ -32,6 +32,13 @@
         </Component>
       </Directory>
     </StandardDirectory>
+
+    <!-- In-app updates run msiexec /passive PS_RELAUNCH=1: start PhoneSweep again when done. -->
+    <Property Id="PS_RELAUNCH" Secure="yes" />
+    <CustomAction Id="RelaunchApp" FileRef="PhoneSweepExe" ExeCommand="" Return="asyncNoWait" />
+    <InstallExecuteSequence>
+      <Custom Action="RelaunchApp" After="InstallFinalize" Condition="PS_RELAUNCH = &quot;1&quot; AND NOT REMOVE" />
+    </InstallExecuteSequence>
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />

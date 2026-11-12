@@ -229,9 +229,14 @@ void WorkspaceScreen::DrawTopBar(AppContext& ctx)
     ImGui::SetItemTooltip("Connect over Wi-Fi");
     ImGui::SameLine(0, S(6));
     centerFrame();
-    if (ui::GhostButton(ICON_GEAR "##settings"))
+    if (ui::GhostButton(ICON_GEAR "##settings")) {
         ctx.showSettings = true;
-    ImGui::SetItemTooltip("Settings");
+        if (ctx.updateAvailable)
+            ctx.settingsTab = 7; // Updates
+    }
+    if (ctx.updateAvailable)
+        ui::UpdateDot(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    ImGui::SetItemTooltip(ctx.updateAvailable ? "Settings (update available)" : "Settings");
     ImGui::SameLine(0, S(6));
     centerFrame();
     if (ctx.showLog)

@@ -702,6 +702,15 @@ uint64_t g_logo = 0;
 
 void SetLogoTexture(uint64_t texture) { g_logo = texture; }
 
+void UpdateDot(ImVec2 itemMin, ImVec2 itemMax)
+{
+    const float r = S(4);
+    const ImVec2 c(itemMax.x - r - S(1), itemMin.y + r + S(1));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddCircleFilled(c, r + S(1.5f), U32(Background));
+    dl->AddCircleFilled(c, r, U32(Accent));
+}
+
 void Logo(float size)
 {
     const ImVec2 p = ImGui::GetCursorScreenPos();

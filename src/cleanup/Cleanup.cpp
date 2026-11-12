@@ -109,6 +109,37 @@ size_t ChooseKeeper(const std::vector<uint32_t>& group, const FileStore& files)
     return best;
 }
 
+size_t DupGroup::KeptCount() const
+{
+    size_t n = 0;
+    for (size_t i = 0; i < files.size(); ++i)
+        n += Keeps(i);
+    return std::max<size_t>(n, 1);
+}
+
+bool DupGroup::SetKept(size_t i, bool kept)
+{
+    if (i >= files.size())
+        return false;
+    if (kept) {
+        if (i != keep)
+            alsoKeep.insert(files[i].path);
+        return true;
+    }
+    if (i != keep) {
+        alsoKeep.erase(files[i].path);
+        return true;
+    }
+    // Un-keeping the main keeper: promote another kept copy, if there is one.
+    for (size_t k = 0; k < files.size(); ++k)
+        if (k != keep && alsoKeep.contains(files[k].path)) {
+            alsoKeep.erase(files[k].path);
+            keep = k;
+            return true;
+        }
+    return false; // the last kept copy always stays
+}
+
 std::vector<std::string> DuplicateDeleteList(const std::vector<DupGroup>& groups, const std::vector<bool>& ticked, const FileStore& files)
 {
     std::unordered_map<std::string_view, const FileEntry*> byPath;
@@ -122,7 +153,7 @@ std::vector<std::string> DuplicateDeleteList(const std::vector<DupGroup>& groups
         if (grp.files.size() < 2 || grp.keep >= grp.files.size())
             continue;
         for (size_t k = 0; k < grp.files.size(); ++k) {
-            if (k == grp.keep)
+            if (grp.Keeps(k))
                 continue;
             const auto it = byPath.find(grp.files[k].path);
             if (it == byPath.end())

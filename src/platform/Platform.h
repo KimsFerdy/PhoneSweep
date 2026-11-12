@@ -53,6 +53,7 @@ public:
     virtual void SetClipboardText(const std::string& utf8) = 0;
     virtual void OpenInExplorer(const std::filesystem::path& path) = 0;
     virtual void OpenUrl(const std::string& utf8Url) = 0; // default browser
+    virtual void RequestQuit() = 0;                         // closes the window at the end of this frame
 };
 
 std::unique_ptr<IPlatform> CreateWin32Dx11Platform();

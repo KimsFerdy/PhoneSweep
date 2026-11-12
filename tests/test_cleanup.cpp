@@ -97,6 +97,43 @@ TEST_CASE("DuplicateDeleteList never deletes the keeper, KEEP files, or every co
     }
 }
 
+TEST_CASE("Duplicate groups can keep several copies, never zero")
+{
+    FileStore s;
+    s.Append({ Make("/storage/emulated/0/a/1.jpg", 10), Make("/storage/emulated/0/b/1.jpg", 10), Make("/storage/emulated/0/c/1.jpg", 10) });
+    DupGroup g;
+    g.size = 10;
+    g.files = { { "/storage/emulated/0/a/1.jpg", 10 }, { "/storage/emulated/0/b/1.jpg", 10 }, { "/storage/emulated/0/c/1.jpg", 10 } };
+    g.keep = 0;
+    CHECK(g.KeptCount() == 1);
+    CHECK(g.Reclaimable() == 20);
+
+    // Keep a second copy: only the third is deleted.
+    CHECK(g.SetKept(2, true));
+    CHECK(g.Keeps(0));
+    CHECK(g.Keeps(2));
+    CHECK_FALSE(g.Keeps(1));
+    CHECK(g.Reclaimable() == 10);
+    CHECK(DuplicateDeleteList({ g }, { true }, s) == std::vector<std::string>{ "/storage/emulated/0/b/1.jpg" });
+
+    // Un-keeping the main keeper promotes the other kept copy.
+    CHECK(g.SetKept(0, false));
+    CHECK(g.keep == 2);
+    CHECK(g.alsoKeep.empty());
+    CHECK(DuplicateDeleteList({ g }, { true }, s) == std::vector<std::string>{ "/storage/emulated/0/a/1.jpg", "/storage/emulated/0/b/1.jpg" });
+
+    // The last kept copy can't be un-kept.
+    CHECK_FALSE(g.SetKept(2, false));
+    CHECK(g.keep == 2);
+    CHECK(g.KeptCount() == 1);
+
+    // Keeping every copy deletes nothing.
+    CHECK(g.SetKept(0, true));
+    CHECK(g.SetKept(1, true));
+    CHECK(g.Reclaimable() == 0);
+    CHECK(DuplicateDeleteList({ g }, { true }, s).empty());
+}
+
 TEST_CASE("ClassifyJunk")
 {
     const std::set<std::string, std::less<>> installed = { "com.whatsapp", "com.spotify.music" };

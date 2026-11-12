@@ -1,4 +1,5 @@
 #include "screens/FilesPage.h"
+#include "screens/ThumbArea.h"
 
 #include "app/AppContext.h"
 #include "platform/Platform.h"
@@ -123,6 +124,8 @@ void DrawCheckBox(ImDrawList* dl, ImVec2 p, float size, bool on)
     }
 }
 
+} // namespace
+
 // Thumbnail (or icon) inside [a, b]. fill=true crops to cover (grid), false letterboxes (preview).
 void DrawThumbArea(ImDrawList* dl, ImVec2 a, ImVec2 b, const FileEntry& e, const ThumbView& v, bool fill, float rounding,
     float iconSize)
@@ -182,6 +185,8 @@ void DrawThumbArea(ImDrawList* dl, ImVec2 a, ImVec2 b, const FileEntry& e, const
         dl->AddRectFilled(a, b, U32(Text, 0.03f + 0.04f * k), rounding);
     }
 }
+
+namespace {
 
 // File state chips (UI spec §6): KEEP, SAVED ✓, QUEUED, SAVING, FAILED.
 // Drawn BEFORE the file name (each followed by SameLine) so long names get

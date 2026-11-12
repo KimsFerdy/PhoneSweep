@@ -2,6 +2,7 @@
 
 #include "adb/AdbClient.h"
 #include "app/AppContext.h"
+#include "cleanup/Preview.h"
 #include "scan/AppSession.h"
 #include "scan/FileStore.h"
 #include "scan/ScanSession.h"
@@ -51,6 +52,7 @@ void CleanupPage::Draw(AppContext& ctx)
         m_serial = ctx.activeSerial;
         if (m_dupJob)
             m_dupJob->Cancel();
+        m_compare.Close();
         m_dup = std::make_shared<DupShared>();
         m_groups.clear();
         m_ticked.clear();
@@ -64,11 +66,19 @@ void CleanupPage::Draw(AppContext& ctx)
     } else if (ctx.filesPreset == "compress") {
         ctx.filesPreset.clear();
         m_tab = 2;
-    } else if (ctx.filesPreset == "dups" && !ctx.files.Files().empty() && !ctx.scan.Running()) {
+    } else if (ctx.filesPreset.starts_with("dups") && !ctx.files.Files().empty() && !ctx.scan.Running()) {
+        // --files=dups:image|video|audio|text|any also opens the first such group side by side.
+        m_autoCompare = ctx.filesPreset.size() > 5 ? ctx.filesPreset.substr(5) : std::string();
+        if (m_autoCompare == "text")
+            m_minSize = 1; // subtitles, logs and exports over 100 KB
+        else if (!m_autoCompare.empty())
+            m_minSize = 2; // media: files over 1 MB (quicker search)
         ctx.filesPreset.clear();
         m_tab = 0;
         StartFind(ctx);
     }
+    // Always drawn here (same ID scope every frame) so the modal can also close itself.
+    m_compare.Draw(ctx, m_groups, m_ticked, [&](std::string_view path) { return Lookup(ctx, path); });
     ui::Tabs(m_tab, { ICON_FILES "  Duplicates", ICON_BROOM "  Junk", ICON_COMPRESS "  Compress" });
 
     // Right side: real free space per volume (refreshed by every scan) + Rescan,
@@ -119,6 +129,7 @@ void CleanupPage::StartFind(AppContext& ctx)
     if (m_dupJob)
         m_dupJob->Cancel();
     m_dup = std::make_shared<DupShared>();
+    m_compare.Close();
     m_dup->running = true;
     m_searched = true;
     m_groups.clear();
@@ -154,6 +165,17 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
             m_dup->done = false;
             m_groups = std::move(m_dup->groups);
             m_ticked.assign(m_groups.size(), true); // every group pre-selected; the keeper is suggested per group
+            if (!m_autoCompare.empty()) {
+                for (size_t g = 0; g < m_groups.size(); ++g) {
+                    const FileEntry* e = Lookup(ctx, m_groups[g].files[0].path);
+                    static constexpr const char* kKinds[] = { "image", "video", "audio", "text", "other" };
+                    if (e && (m_autoCompare == "any" || m_autoCompare == kKinds[static_cast<int>(PreviewKindFor(*e))])) {
+                        m_compare.Open(static_cast<int>(g));
+                        break;
+                    }
+                }
+                m_autoCompare.clear();
+            }
         }
     }
 
@@ -216,13 +238,17 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
         total += m_groups[g].Reclaimable();
         if (m_ticked[g]) {
             reclaim += m_groups[g].Reclaimable();
-            copies += m_groups[g].files.size() - 1;
+            copies += m_groups[g].files.size() - std::min(m_groups[g].files.size(), m_groups[g].KeptCount());
         }
     }
     ImGui::Dummy(ImVec2(0, S(4)));
     {
         Font f(GetFonts().uiStrong, FontBase + 1);
         ImGui::TextUnformatted(std::format("{} groups of identical files \xC2\xB7 {} could be freed", ui::Count(m_groups.size()), ui::Bytes(total)).c_str());
+    }
+    {
+        Font f(GetFonts().ui, FontSmall);
+        ui::DimText("Click a group to compare its copies side by side.");
     }
     if (ui::GhostButton("Select all"))
         m_ticked.assign(m_groups.size(), true);
@@ -275,9 +301,20 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
                 dl->AddRectFilled(p, ImVec2(p.x + w, p.y + rowH), U32(PanelRaised));
                 ImGui::SetCursorScreenPos(ImVec2(p.x + S(8), p.y + (rowH - ImGui::GetFrameHeight()) * 0.5f));
                 bool t = m_ticked[row.group];
-                if (ImGui::Checkbox("##g", &t))
+                if (ImGui::Checkbox("##g", &t)) {
                     m_ticked[row.group] = t;
-                ImGui::SameLine(0, S(10));
+                    if (t && grp.KeptCount() >= grp.files.size())
+                        grp.alsoKeep.clear(); // everything was kept: back to one suggested copy
+                }
+                const float textX = p.x + S(8) + ImGui::GetFrameHeight() + S(10);
+                // The rest of the header opens the side-by-side window.
+                ImGui::SetCursorScreenPos(ImVec2(p.x + S(40), p.y));
+                if (ImGui::InvisibleButton("##cmp", ImVec2(std::max(1.0f, w - S(40)), rowH)))
+                    m_compare.Open(row.group);
+                const bool hover = ImGui::IsItemHovered();
+                if (hover)
+                    dl->AddRectFilled(ImVec2(p.x + S(40), p.y), ImVec2(p.x + w, p.y + rowH), U32(Text, 0.04f));
+                ImGui::SetCursorScreenPos(ImVec2(textX, p.y + (rowH - ImGui::GetFrameHeight()) * 0.5f));
                 ImGui::AlignTextToFramePadding();
                 {
                     Font f(GetFonts().uiStrong, FontBase);
@@ -285,16 +322,31 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
                 }
                 ImGui::SameLine(0, S(10));
                 ui::ColoredText(m_ticked[row.group] ? Danger : TextDim, std::format("frees {}", ui::Bytes(grp.Reclaimable())));
+                {
+                    // Right side: compare hint.
+                    Font f(GetFonts().ui, FontSmall);
+                    const char* hint = ICON_COLUMNS "  Compare";
+                    const ImVec2 ts = ImGui::CalcTextSize(hint);
+                    dl->AddText(ImVec2(p.x + w - ts.x - S(14), p.y + (rowH - ts.y) * 0.5f), U32(hover ? Accent : TextDim, hover ? 1.0f : 0.7f), hint);
+                }
             } else {
                 const DupFile& df = grp.files[row.file];
                 const FileEntry* e = Lookup(ctx, df.path);
-                const bool keeper = static_cast<size_t>(row.file) == grp.keep;
+                const bool keeper = grp.Keeps(static_cast<size_t>(row.file));
                 const bool keepFlag = e && (e->flags & FileFlag_Keep);
                 // Radio: which copy stays.
                 ImGui::SetCursorScreenPos(ImVec2(p.x + S(34), p.y + (rowH - ImGui::GetFrameHeight()) * 0.5f));
-                if (ui::Radio("##keep", keeper))
+                if (ui::Radio("##keep", keeper)) {
                     grp.keep = static_cast<size_t>(row.file);
-                ImGui::SetItemTooltip("Keep this copy");
+                    grp.alsoKeep.clear(); // the radio means "keep only this one"
+                }
+                ImGui::SetItemTooltip("Keep only this copy (compare the group to keep several)");
+                // The rest of the row opens the side-by-side window.
+                ImGui::SetCursorScreenPos(ImVec2(p.x + S(64), p.y));
+                if (ImGui::InvisibleButton("##cmprow", ImVec2(std::max(1.0f, w - S(64)), rowH)))
+                    m_compare.Open(row.group);
+                if (ImGui::IsItemHovered())
+                    dl->AddRectFilled(ImVec2(p.x + S(64), p.y), ImVec2(p.x + w, p.y + rowH), U32(Text, 0.03f));
                 // Thumbnail.
                 const float th = rowH - S(8);
                 const ImVec2 tp(p.x + S(70), p.y + S(4));

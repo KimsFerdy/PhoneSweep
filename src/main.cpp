@@ -17,6 +17,7 @@
 #include "backup/M9SelfTest.h"
 #include "compress/M8SelfTest.h"
 #include "nuke/NukeSelfTest.h"
+#include "platform/AudioPlayer.h"
 #include "platform/Platform.h"
 #include "thumbs/ImageOps.h"
 #include "ui/Widgets.h"
@@ -93,6 +94,15 @@ CmdLine ParseArgs()
             c.app.backupRootOverride = *v8;
         else if (auto v9 = value("--settings"))
             c.app.openSettingsTab = std::atoi(v9->c_str());
+        else if (auto v10 = value("--pretend-version"))
+            c.app.pretendVersion = *v10;
+        else if (auto v11 = value("--update-kind"))
+            c.app.updateKind = *v11;
+        else if (a == "--update-selftest") {
+            c.app.updateSelfTest = true;
+            if (c.app.pretendVersion.empty())
+                c.app.pretendVersion = "0.9.0";
+        }
         else if (a == "--log")
             c.app.startWithLog = true;
     }
@@ -111,7 +121,8 @@ std::filesystem::path ExeDir()
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
 {
-    const CmdLine args = ParseArgs();
+    CmdLine args = ParseArgs();
+    args.app.noUpdateCheck = !args.screenshot.empty() && args.app.pretendVersion.empty();
     if (!args.screenshot.empty()) {
         // Headless-ish runs must never block on an assert dialog: print and abort instead.
         _set_error_mode(_OUT_TO_STDERR);
@@ -128,6 +139,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int)
         return ps::RunM8SelfTest();
     for (int i = 1; i < __argc; ++i) {
         const std::wstring_view a = __wargv[i];
+        if (a.starts_with(L"--play-test=")) { // dev: can Media Foundation play this file?
+            ps::AudioPlayer player;
+            const bool started = player.Play(std::filesystem::path(a.substr(12)), "t");
+            bool failed = false;
+            const DWORD until = GetTickCount() + 2500;
+            while (GetTickCount() < until && !failed) {
+                MSG msg;
+                while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                failed = player.TakeFailure();
+                Sleep(10);
+            }
+            ps::LogInfo("play-test: started={} failed={} playing={} pos={} ms length={} ms", started, failed, player.IsPlaying(), player.PositionMs(), player.LengthMs());
+            return started && !failed && player.PositionMs() > 0 ? 0 : 3;
+        }
         if (a.starts_with(L"--m10-selftest"))
             return ps::RunM10SelfTest(a.size() > 15 && a[14] == L'=' ? std::filesystem::path(a.substr(15)) : std::filesystem::path());
         if (a.starts_with(L"--m9-selftest"))

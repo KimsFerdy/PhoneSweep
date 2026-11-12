@@ -67,3 +67,9 @@
 #define ICON_CAMERA "\xEF\x80\xB0"  // camera (Instagram)
 #define ICON_PALETTE "\xEF\x94\xBF" // palette (ArtStation)
 #define ICON_HEART "\xEF\x80\x84"   // heart
+// v1.1
+#define ICON_PLAY "\xEF\x81\x8B"         // play
+#define ICON_STOP "\xEF\x81\x8D"         // stop
+#define ICON_CHEVRON_LEFT "\xEF\x81\x93" // chevron-left
+#define ICON_COLUMNS "\xEF\x83\x9B"      // table-columns (compare copies)
+#define ICON_ROCKET "\xEF\x84\xB5"       // rocket (updates)

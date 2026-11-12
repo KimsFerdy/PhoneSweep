@@ -1,8 +1,8 @@
 ; Inno Setup script for PhoneSweep (https://jrsoftware.org/isinfo.php).
-; Built by package.ps1:  ISCC /DAppVersion=1.0.0 /DSourceDir=<staged folder> installer\PhoneSweep.iss
+; Built by package.ps1:  ISCC /DAppVersion=1.1.0 /DSourceDir=<staged folder> installer\PhoneSweep.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\PhoneSweep-" + AppVersion + "-win64"
@@ -29,7 +29,8 @@ UninstallDisplayName=PhoneSweep
 WizardStyle=modern
 ; Installs for the current user without admin by default; "all users" is offered too.
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; "commandline": the in-app updater passes /CURRENTUSER or /ALLUSERS to match the existing install.
+PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
@@ -53,7 +54,15 @@ Name: "{autodesktop}\PhoneSweep"; Filename: "{app}\PhoneSweep.exe"; Tasks: deskt
 
 [Run]
 Filename: "{app}\PhoneSweep.exe"; Description: "{cm:LaunchProgram,PhoneSweep}"; Flags: nowait postinstall skipifsilent
+; In-app updates run Setup with /SILENT /RELAUNCH=1: start PhoneSweep again when done (never elevated).
+Filename: "{app}\PhoneSweep.exe"; Flags: nowait runasoriginaluser; Check: RelaunchAfterUpdate
 
 [UninstallRun]
 ; Stop the adb server we shipped so its files can be removed.
 Filename: "{app}\platform-tools\adb.exe"; Parameters: "kill-server"; Flags: runhidden skipifdoesntexist; RunOnceId: "KillAdb"
+
+[Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;

@@ -2,6 +2,7 @@
 #include "app/AppContext.h"
 #include "cleanup/Cleanup.h"
 #include "screens/CompressPanel.h"
+#include "screens/DupCompare.h"
 #include "screens/IScreen.h"
 #include "util/JobSystem.h"
 
@@ -45,6 +46,8 @@ private:
     std::vector<bool> m_ticked;
     int m_minSize = 1; // index into kMinSizes
     bool m_searched = false;
+    DupCompare m_compare; // v1.1: side-by-side window for one group
+    std::string m_autoCompare; // dev preset: open the first group of this preview kind
 
     // Junk
     std::vector<JunkCategory> m_junk;

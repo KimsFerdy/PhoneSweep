@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -51,6 +52,11 @@ struct Settings {
     // Wireless (M9)
     std::vector<std::pair<std::string, std::string>> wirelessKnown; // { "192.168.0.3:5555", "Samsung SM-G960F" }
     bool wirelessReconnect = true;                                // reconnect known phones at startup
+
+    // Updates (v1.1)
+    bool autoCheckUpdates = true;  // look for a new release at startup, at most once a day
+    int64_t lastUpdateCheck = 0;   // unix seconds
+    std::string skippedVersion;    // "1.2.0": don't announce this one at startup
 
     std::filesystem::path BackupRoot() const;     // resolved
 

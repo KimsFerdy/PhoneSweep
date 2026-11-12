@@ -20,10 +20,12 @@
 #include "ui/Widgets.h"
 #include "util/Log.h"
 #include "util/Utf8.h"
+#include "util/Process.h"
 
 #include <imgui.h>
 
 #include <algorithm>
+#include <chrono>
 #include <unordered_map>
 
 namespace ps {
@@ -90,6 +92,16 @@ App::App(IPlatform& platform, AppOptions opts)
     }
     if (!opts.backupRootOverride.empty())
         m_settings.backupRoot = opts.backupRootOverride; // in memory only (Save() is only called on settings edits)
+
+    // v1.1 updates: what we are, how we were installed, and a quiet daily check.
+    const SemVer current = ParseSemVer(opts.pretendVersion.empty() ? kAppVersion : opts.pretendVersion).value_or(SemVer{});
+    const InstallKind kind = ParseInstallKind(opts.updateKind, DetectInstallKind(ExeDir()));
+    m_updater = std::make_unique<Updater>(m_jobs, current, kind);
+    Updater::CleanDownloads(); // the installer of the update that brought us here
+    LogInfo("Version {}, installed as: {}", current.Str(), InstallKindName(kind));
+    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    if (!opts.pretendVersion.empty() || (m_settings.autoCheckUpdates && !opts.noUpdateCheck && opts.fake == FakeScenario::None && now - m_settings.lastUpdateCheck > 20 * 3600))
+        m_updater->Check(true);
 }
 
 App::~App() = default;
@@ -583,6 +595,7 @@ void App::Frame()
     }
     m_scan.Pump(m_files);
     m_apps.Pump(m_jobs);
+    PumpUpdater();
 
     // M9: the cable was pulled but the same phone is still here over Wi-Fi (or the
     // other way round): follow it instead of showing "disconnected".
@@ -691,7 +704,7 @@ void App::DrawSettings()
     ImGui::PopStyleVar();
     ImGui::PopStyleColor();
 
-    static constexpr const char* kTabs[] = { "General", "Backup", "Scan", "Thumbnails", "ADB", "Nuke Protector", "Reports", "About" };
+    static constexpr const char* kTabs[] = { "General", "Backup", "Scan", "Thumbnails", "ADB", "Nuke Protector", "Reports", "Updates", "About" };
     if (m_ctx.settingsTab >= 0) {
         m_settingsTab = std::exchange(m_ctx.settingsTab, -1);
     }
@@ -1067,7 +1080,10 @@ void App::DrawSettings()
         changed |= ImGui::Checkbox("Mask serial numbers in exports", &m_settings.reportMaskSerial);
         break;
     }
-    case 7: { // About
+    case 7: // Updates
+        changed |= DrawUpdatesTab();
+        break;
+    case 8: { // About
         ui::Logo(S(72));
         ImGui::SameLine(0, S(16));
         ImGui::BeginGroup();
@@ -1121,7 +1137,7 @@ void App::DrawSettings()
     }
     default: {
         static constexpr const char* kWhen[] = { "", "Arrives with saving (Milestone 4).", "Arrives with the file scan (Milestone 1).",
-            "Arrives with thumbnails (Milestone 2).", "", "Arrives with Nuke (Milestone 5).", "Arrives with reports (Milestone 6).", "" };
+            "Arrives with thumbnails (Milestone 2).", "", "Arrives with Nuke (Milestone 5).", "Arrives with reports (Milestone 6).", "", "" };
         ui::EmptyState(ICON_GEAR, kTabs[m_settingsTab], kWhen[m_settingsTab]);
         break;
     }
@@ -1139,6 +1155,204 @@ void App::DrawSettings()
         m_ctx.showSettings = false;
     }
     ImGui::EndPopup();
+}
+
+// ---- v1.1 updates ----------------------------------------------------------------
+
+void App::PumpUpdater()
+{
+    if (!m_updater)
+        return;
+    const Updater::Status s = m_updater->Get();
+    const bool newer = s.release && s.release->version > m_updater->Current();
+    m_ctx.updateAvailable = newer && s.state != Updater::State::Checking;
+    if (s.checkedAt && s.checkedAt != m_seenCheck) {
+        m_seenCheck = s.checkedAt;
+        if (s.state == Updater::State::UpToDate || s.state == Updater::State::Available) {
+            m_settings.lastUpdateCheck = s.checkedAt;
+            m_settings.Save();
+        }
+        if (s.automatic && s.state == Updater::State::Available && !m_updateAnnounced && s.release->version.Str() != m_settings.skippedVersion) {
+            m_updateAnnounced = true;
+            ui::Toast(std::format("PhoneSweep {} is available: Settings \xE2\x86\x92 Updates", s.release->version.Str()), ui::ToastKind::Info);
+        }
+    }
+    if (newer && s.automatic && s.release->version.Str() == m_settings.skippedVersion)
+        m_ctx.updateAvailable = false; // skipped: no dot until the user checks by hand
+
+    // --update-selftest: press the buttons for a real end-to-end run.
+    if (m_opts.updateSelfTest) {
+        if (s.state == Updater::State::Available)
+            m_updater->Download();
+        else if (s.state == Updater::State::Ready) {
+            std::string err;
+            LogInfo("Update self-test: installing {}", Narrow(s.installer.wstring()));
+            if (m_updater->Install(&err))
+                m_platform.RequestQuit();
+            else
+                LogError("Update self-test: {}", err);
+            m_opts.updateSelfTest = false;
+        } else if (s.state == Updater::State::Error || s.state == Updater::State::UpToDate) {
+            LogError("Update self-test stopped: {}", s.state == Updater::State::UpToDate ? "up to date" : s.message);
+            m_opts.updateSelfTest = false;
+        }
+    }
+}
+
+bool App::DrawUpdatesTab()
+{
+    bool changed = false;
+    const Updater::Status s = m_updater->Get();
+    using St = Updater::State;
+    const InstallKind kind = m_updater->Kind();
+
+    // What's running now.
+    {
+        Font f(GetFonts().uiStrong, FontBase + 1);
+        ImGui::TextUnformatted(std::format("PhoneSweep {}", m_updater->Current().Str()).c_str());
+    }
+    ImGui::SameLine(0, S(10));
+    ui::Pill(InstallKindName(kind), TextDim);
+    ImGui::Dummy(ImVec2(0, S(4)));
+
+    const bool busy = s.state == St::Checking || s.state == St::Downloading;
+    if (ui::SecondaryButton(s.state == St::Checking ? "Checking\xE2\x80\xA6" : ICON_ROTATE "  Check for updates", {}, !busy))
+        m_updater->Check(false);
+    ImGui::SameLine(0, S(12));
+    ImGui::AlignTextToFramePadding();
+    const bool newer = s.release && s.release->version > m_updater->Current();
+    switch (s.state) {
+    case St::Idle: ui::DimText("Not checked yet."); break;
+    case St::Checking: ui::DimText("Asking GitHub for the latest release\xE2\x80\xA6"); break;
+    case St::UpToDate: ui::ColoredText(Success, ICON_CIRCLE_CHECK "  You're up to date."); break;
+    case St::Error:
+        if (!newer)
+            ui::ColoredText(Warning, std::string(ICON_WARNING "  ") + s.message);
+        else
+            ui::ColoredText(Accent, "A new version is available.");
+        break;
+    default: ui::ColoredText(Accent, "A new version is available."); break;
+    }
+    changed |= ImGui::Checkbox("Check for updates when PhoneSweep starts (once a day)", &m_settings.autoCheckUpdates);
+    {
+        Font sf(GetFonts().ui, FontSmall);
+        ImGui::Indent(ImGui::GetFrameHeight() + S(8));
+        ui::DimText("Only asks GitHub which version is the newest. Nothing about you or your phone is sent.");
+        ImGui::Unindent(ImGui::GetFrameHeight() + S(8));
+    }
+
+    if (!newer)
+        return changed;
+    const ReleaseInfo& rel = *s.release;
+    const ReleaseAsset* asset = PickAsset(rel, kind);
+
+    // The new release.
+    ImGui::Dummy(ImVec2(0, S(8)));
+    ui::HLine();
+    ImGui::Dummy(ImVec2(0, S(6)));
+    {
+        Font f(GetFonts().uiStrong, FontBase + 2);
+        ui::ColoredText(Accent, std::format(ICON_ROCKET "  PhoneSweep {} is available", rel.version.Str()));
+    }
+    {
+        Font sf(GetFonts().ui, FontSmall);
+        std::string sub = rel.publishedAt.empty() ? std::string() : "Released " + rel.publishedAt;
+        if (asset)
+            sub += std::format("{}{} ({})", sub.empty() ? "" : "  \xC2\xB7  ", asset->name, ui::Bytes(asset->size));
+        ui::DimText(sub);
+    }
+
+    // Release notes (scrolls), then the action row.
+    const float actionsH = ImGui::GetFrameHeight() + S(26) + (s.state == St::Downloading || s.state == St::Error ? S(24) : 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Background);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(12), S(10)));
+    ImGui::BeginChild("##notes", ImVec2(0, std::max(S(80), ImGui::GetContentRegionAvail().y - actionsH)), ImGuiChildFlags_AlwaysUseWindowPadding);
+    {
+        const auto notes = FormatReleaseNotes(rel.notes);
+        if (notes.empty())
+            ui::DimText("No release notes.");
+        ImGui::PushTextWrapPos(0.0f);
+        for (const auto& line : notes) {
+            switch (line.kind) {
+            case NoteLine::Kind::Heading: {
+                Font f(GetFonts().uiStrong, FontBase);
+                ImGui::TextUnformatted(line.text.c_str());
+                break;
+            }
+            case NoteLine::Kind::Bullet:
+                ImGui::Bullet();
+                ImGui::TextUnformatted(line.text.c_str());
+                break;
+            case NoteLine::Kind::Blank: ImGui::Dummy(ImVec2(0, S(4))); break;
+            default: ImGui::TextUnformatted(line.text.c_str()); break;
+            }
+        }
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2(0, S(4)));
+
+    if (s.state == St::Downloading) {
+        const float frac = s.total ? static_cast<float>(s.done) / static_cast<float>(s.total) : 0.0f;
+        ui::ProgressBarThin(frac, ImGui::GetContentRegionAvail().x, S(6), Accent);
+        ImGui::AlignTextToFramePadding();
+        ui::DimText(std::format("Downloading\xE2\x80\xA6 {} of {}", ui::Bytes(s.done), ui::Bytes(s.total)));
+        ImGui::SameLine();
+        if (ui::GhostButton("Cancel##dl"))
+            m_updater->Cancel();
+        return changed;
+    }
+    if (s.state == St::Error)
+        ui::ColoredText(Danger, std::string(ICON_WARNING "  ") + s.message);
+
+    if (kind == InstallKind::Portable) {
+        if (ui::PrimaryButton(ICON_DOWNLOAD "  Open the download page"))
+            m_platform.OpenUrl(rel.pageUrl);
+        ImGui::SameLine(0, S(12));
+        ImGui::AlignTextToFramePadding();
+        ui::DimText("Portable copy: unzip the new version over this folder.");
+    } else if (s.state == St::Ready) {
+        // Don't pull the rug from under a transfer, scan or delete.
+        std::string running;
+        for (const auto& j : m_jobs.Visible())
+            if (!j->Finished() && j->Name() != "Downloading update" && j->Name() != "Checking for updates")
+                running = j->Name();
+        if (m_ctx.deleteRunning)
+            running = "Deleting files";
+        if (ui::PrimaryButton(ICON_ROCKET "  Restart and install", {}, running.empty())) {
+            std::string err;
+            m_settings.Save();
+            if (m_updater->Install(&err))
+                m_platform.RequestQuit();
+            else
+                ui::Toast(err, ui::ToastKind::Error);
+        }
+        ImGui::SameLine(0, S(12));
+        ImGui::AlignTextToFramePadding();
+        if (!running.empty())
+            ui::ColoredText(Warning, std::format("Waiting for \"{}\" to finish", running));
+        else
+            ui::DimText(kind == InstallKind::InnoUser ? "PhoneSweep closes, updates itself and opens again."
+                                                      : "PhoneSweep closes, Windows asks for permission, then it updates and opens again.");
+    } else {
+        if (ui::PrimaryButton(ICON_DOWNLOAD "  Download update", {}, asset != nullptr))
+            m_updater->Download();
+        if (!asset)
+            ImGui::SetItemTooltip("This release has no installer of your kind; use the release page.");
+        ImGui::SameLine();
+        if (ui::SecondaryButton(ICON_EXTERNAL "  Release page"))
+            m_platform.OpenUrl(rel.pageUrl);
+        ImGui::SameLine();
+        const bool skipped = m_settings.skippedVersion == rel.version.Str();
+        if (ui::GhostButton(skipped ? "Skipped (undo)" : "Skip this version")) {
+            m_settings.skippedVersion = skipped ? std::string() : rel.version.Str();
+            changed = true;
+        }
+        ImGui::SetItemTooltip("Don't announce this version at startup. You can still install it from here.");
+    }
+    return changed;
 }
 
 } // namespace ps

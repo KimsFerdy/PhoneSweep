@@ -58,6 +58,7 @@ public:
     void SetClipboardText(const std::string& utf8) override;
     void OpenInExplorer(const std::filesystem::path& path) override;
     void OpenUrl(const std::string& utf8Url) override;
+    void RequestQuit() override;
 
 private:
     static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -358,6 +359,12 @@ void Win32Dx11Platform::OpenUrl(const std::string& utf8Url)
     if (!utf8Url.starts_with("https://"))
         return;
     ShellExecuteW(m_hwnd, L"open", Widen(utf8Url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void Win32Dx11Platform::RequestQuit()
+{
+    if (m_hwnd)
+        PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
 }
 
 LRESULT WINAPI Win32Dx11Platform::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)

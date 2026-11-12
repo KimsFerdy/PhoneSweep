@@ -96,8 +96,15 @@ void HomeScreen::DrawHeader(AppContext& ctx)
     ImGui::SetItemTooltip("Connect a phone over Wi-Fi (no cable)");
     ImGui::SameLine(0, S(8));
     ImGui::SetCursorPosY(y0 + (h - ImGui::GetFrameHeight()) * 0.5f);
-    if (ui::GhostButton(label))
+    if (ui::GhostButton(label)) {
         ctx.showSettings = true;
+        if (ctx.updateAvailable)
+            ctx.settingsTab = 7; // Updates
+    }
+    if (ctx.updateAvailable) {
+        ui::UpdateDot(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        ImGui::SetItemTooltip("A new version of PhoneSweep is available");
+    }
     ImGui::SetCursorPosY(y0 + h);
 }
 

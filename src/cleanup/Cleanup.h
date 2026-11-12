@@ -2,6 +2,7 @@
 #include "nuke/NukePlan.h"
 #include "scan/FileModel.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -30,7 +31,14 @@ struct DupGroup {
     std::string md5;            // full-file checksum shared by every copy
     std::vector<DupFile> files; // >= 2 identical copies
     size_t keep = 0;            // index into files: the copy that stays
-    uint64_t Reclaimable() const { return size * (files.size() - 1); }
+    std::set<std::string, std::less<>> alsoKeep; // v1.1: more copies the user chose to keep (paths)
+
+    bool Keeps(size_t i) const { return i == keep || (i < files.size() && alsoKeep.contains(files[i].path)); }
+    size_t KeptCount() const;
+    uint64_t Reclaimable() const { return size * (files.size() - std::min(files.size(), KeptCount())); }
+    // Marks copy i as kept or deleted. One copy always stays: un-keeping the last kept
+    // copy is refused (returns false). Un-keeping the main keeper promotes another kept copy.
+    bool SetKept(size_t i, bool kept);
 };
 
 // Same-size candidate groups (>= 2 files of size >= minSize), protected files excluded.

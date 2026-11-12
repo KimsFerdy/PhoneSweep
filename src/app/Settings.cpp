@@ -93,6 +93,9 @@ Settings Settings::Load()
         Get(j, "wirelessKnown", s.wirelessKnown);
         Get(j, "wirelessReconnect", s.wirelessReconnect);
         Get(j, "zipDeleteFolder", s.zipDeleteFolder);
+        Get(j, "autoCheckUpdates", s.autoCheckUpdates);
+        Get(j, "lastUpdateCheck", s.lastUpdateCheck);
+        Get(j, "skippedVersion", s.skippedVersion);
     } catch (const nlohmann::json::exception& e) {
         LogWarn("settings.json unreadable, using defaults: {}", e.what());
     }
@@ -129,6 +132,9 @@ void Settings::Save() const
         { "wirelessKnown", wirelessKnown },
         { "wirelessReconnect", wirelessReconnect },
         { "zipDeleteFolder", zipDeleteFolder },
+        { "autoCheckUpdates", autoCheckUpdates },
+        { "lastUpdateCheck", lastUpdateCheck },
+        { "skippedVersion", skippedVersion },
     };
     const auto path = DataDir() / L"settings.json";
     const auto tmp = DataDir() / L"settings.json.tmp";

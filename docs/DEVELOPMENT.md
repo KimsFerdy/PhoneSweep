@@ -20,6 +20,19 @@ Requirements: Visual Studio 2022 with *Desktop development with C++* (ships MSVC
 
 When releasing a new version, bump it in `CMakeLists.txt`, `src/app/Version.h`, `res/PhoneSweep.rc` and `res/PhoneSweep.manifest`. Keep the `UpgradeCode` in the `.wxs` and the `AppId` in the `.iss` unchanged so installers upgrade in place.
 
+### In-app updates (v1.1)
+
+Settings → Updates asks `api.github.com/repos/KimsFerdy/PhoneSweep/releases/latest` (also once a day at startup unless turned off). It only accepts assets under `github.com/KimsFerdy/PhoneSweep/releases/download/`, picks the one that matches how this copy was installed, and checks the download against GitHub's SHA-256 `digest` before running it:
+
+| Installed with | Detected by | Downloads | Runs |
+|---|---|---|---|
+| setup.exe, this user | `unins000.exe` next to the exe | `*-setup.exe` | `/SILENT /CURRENTUSER /RELAUNCH=1` |
+| setup.exe, all users | the same, under Program Files | `*-setup.exe` | `/SILENT /ALLUSERS /RELAUNCH=1` (UAC prompt) |
+| msi | our MSI UpgradeCode is registered, exe under Program Files | `*.msi` | `msiexec /i … /passive PS_RELAUNCH=1` (UAC prompt) |
+| zip | none of the above | nothing | opens the release page |
+
+So every release needs a `v<major>.<minor>.<patch>` tag and the three files `package.ps1` makes: `PhoneSweep-<v>-setup.exe`, `PhoneSweep-<v>-x64.msi`, `PhoneSweep-<v>-win64.zip`. `/RELAUNCH=1` (Inno `[Code]`) and `PS_RELAUNCH=1` (a WiX custom action) start PhoneSweep again after the silent install. The release notes (Markdown) are shown in the app, so write them for users.
+
 `build.ps1` loads the MSVC environment itself and uses VS's bundled vcpkg unless `VCPKG_ROOT` is set. Dependencies come from `vcpkg.json` (manifest mode): imgui (docking, dx11, win32, freetype), stb, nlohmann-json, doctest.
 
 Outputs: `build\windows-msvc-debug\PhoneSweep.exe`, `build\windows-msvc-release\PhoneSweep.exe`, and `PhoneSweepTests.exe` next to each.
@@ -40,7 +53,7 @@ src/app        App state, settings, version + links
 src/apps       App actions: Google Play link, Ask AI text, quick/full uninstall
 src/backup     ZIP64 writer/reader, verified zip backups
 src/bg         Background restrictions, live CPU/RAM (top), battery (batterystats)
-src/cleanup    Duplicate finder, junk sweep
+src/cleanup    Duplicate finder, junk sweep, compare-window previews (text decoding)
 src/compress   Photo/video compression (ffmpeg / stb)
 src/nuke       Nuke plan (pure decision table) and executor
 src/platform   IPlatform + Win32/DX11 implementation
@@ -50,6 +63,7 @@ src/scan       File scan, categories, app scan
 src/screens    All pages and dialogs
 src/thumbs     Thumbnails (EXIF fast path, ffmpeg frames), disk cache
 src/transfer   Verified pulls/pushes, manifests, save queue
+src/update     GitHub release check, WinHTTP download, SHA-256, silent installer launch
 src/ui         Theme, widgets
 tests/         doctest unit tests (real adb output captured as fixtures)
 assets/        Fonts (OFL) and the app logo
@@ -74,6 +88,7 @@ These touch only throwaway files they create, and clean up afterwards. Results g
 | `PhoneSweep.exe --m8-selftest` | Compress (all three outcomes) and restore: sizes, dates, EXIF, MD5s |
 | `PhoneSweep.exe --m9-selftest[=<backup folder>]` | USB → Wi-Fi switch, verified push/pull over Wi-Fi, back to USB; zips a *copy* of the backup folder |
 | `PhoneSweep.exe --m10-selftest[=<test.apk>]` | Live CPU/RAM + battery parsing, then quick and full uninstall of a throwaway APK |
+| `PhoneSweep.exe --update-selftest` | No phone needed. Runs as 0.9.0, downloads the latest release, verifies it, installs it silently and exits. Use it on an *installed* copy, which ends up on the latest release |
 
 ## Dev flags
 
@@ -88,6 +103,10 @@ These touch only throwaway files they create, and clean up afterwards. Results g
 | `--settings=N` | Open Settings on tab N |
 | `--files=grid,images,camera,preview` | Files page presets |
 | `--files=dups,junk,compress,restore,archives,wifi,running,battery,uninstall` | Page/tab presets (`restore` runs the read-only comparison, `uninstall` only opens the dialog) |
+| `--files=dups:image\|video\|audio\|text\|any` | Find duplicates, then open the first group of that kind in the compare window |
+| `--pretend-version=0.9.0` | Run as an older version, so the update check finds the real latest release |
+| `--update-kind=inno\|inno-all\|msi\|portable` | Override the detected installation type |
+| `--play-test=<file>` | Can Windows (Media Foundation) play this audio file? Exit code 0 = yes |
 
 ## Notes on Android quirks
 

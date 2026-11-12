@@ -12,6 +12,7 @@
 #include "transfer/Manifest.h"
 #include "transfer/Puller.h"
 #include "util/JobSystem.h"
+#include "update/Update.h"
 
 #include <memory>
 #include <string>
@@ -31,6 +32,10 @@ struct AppOptions {
     bool startWithLog = false;
     std::string filesPreset;
     std::string backupRootOverride; // dev: never persisted
+    std::string pretendVersion;     // dev: --pretend-version=0.9.0 (test the updater against the real latest release)
+    std::string updateKind;         // dev: --update-kind=inno|inno-all|msi|portable (default: detected)
+    bool noUpdateCheck = false;     // screenshots: never touch the network
+    bool updateSelfTest = false;    // dev: --update-selftest: download + install the latest release unattended
     int openSettingsTab = -1;       // dev: open Settings on this tab
 };
 
@@ -79,6 +84,13 @@ private:
     std::string m_scanDeviceId; // its hardware serial (survives USB <-> Wi-Fi)
     std::unique_ptr<WirelessDialog> m_wirelessDlg;
     JobPtr m_trimJob;
+
+    // v1.1 updates
+    std::unique_ptr<Updater> m_updater;
+    int64_t m_seenCheck = 0;
+    bool m_updateAnnounced = false;
+    void PumpUpdater();
+    bool DrawUpdatesTab();
 
     // "Auto nuke saved files": verified files waiting to be deleted from the phone.
     struct AutoNuke {

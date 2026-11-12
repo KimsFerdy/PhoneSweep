@@ -60,6 +60,7 @@ struct AppContext {
     int settingsTab = -1; // open Settings on this tab (5 = Nuke Protector)
     bool showLog = false;
     bool showWireless = false; // M9: Wi-Fi connect dialog
+    bool updateAvailable = false; // v1.1: a newer release exists (dot on the Settings button)
 
     // Requests from screens, handled by App after the frame.
     bool requestAdbRelocate = false; // "Locate adb.exe…"

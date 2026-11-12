@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(PhoneSweep VERSION 1.0.0 LANGUAGES CXX RC)
+project(PhoneSweep VERSION 1.1.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -75,9 +75,12 @@ add_library(PhoneSweepCore STATIC
     src/bg/Usage.cpp
     src/apps/AppActions.cpp
     src/apps/M10SelfTest.cpp
+    src/cleanup/Preview.cpp
+    src/update/Update.cpp
+    src/update/Http.cpp
 )
 target_include_directories(PhoneSweepCore PUBLIC src ${STB_INCLUDE_DIRS})
-target_link_libraries(PhoneSweepCore PUBLIC ps_options nlohmann_json::nlohmann_json)
+target_link_libraries(PhoneSweepCore PUBLIC ps_options nlohmann_json::nlohmann_json winhttp bcrypt msi shell32 ole32)
 
 # ---- App ---------------------------------------------------------------------
 add_executable(PhoneSweep WIN32
@@ -100,11 +103,13 @@ add_executable(PhoneSweep WIN32
     src/screens/CompressPanel.cpp
     src/screens/BackupPage.cpp
     src/screens/WirelessDialog.cpp
+    src/screens/DupCompare.cpp
+    src/platform/AudioPlayer.cpp
     src/thumbs/ThumbCache.cpp
     res/PhoneSweep.manifest
     res/PhoneSweep.rc
 )
-target_link_libraries(PhoneSweep PRIVATE PhoneSweepCore imgui::imgui d3d11 dxgi dwmapi comdlg32 shell32 ole32)
+target_link_libraries(PhoneSweep PRIVATE PhoneSweepCore imgui::imgui d3d11 dxgi dwmapi comdlg32 shell32 ole32 mfplay propsys)
 
 # Ship fonts next to the exe.
 add_custom_command(TARGET PhoneSweep POST_BUILD
@@ -130,6 +135,8 @@ add_executable(PhoneSweepTests
     tests/test_compress_restore.cpp
     tests/test_m9.cpp
     tests/test_m10.cpp
+    tests/test_preview.cpp
+    tests/test_update.cpp
 )
 target_link_libraries(PhoneSweepTests PRIVATE PhoneSweepCore doctest::doctest)
 add_test(NAME PhoneSweepTests COMMAND PhoneSweepTests)

@@ -103,6 +103,8 @@ void EndPanel();
 void SetLogoTexture(uint64_t texture);
 // Draws the logo (rounded) at the cursor, `size` px square. Falls back to the phone glyph.
 void Logo(float size);
+// Small accent dot on a button corner (v1.1: update available).
+void UpdateDot(ImVec2 itemMin, ImVec2 itemMax);
 
 // ---- Toasts (bottom-right, 3 s) --------------------------------------------
 
