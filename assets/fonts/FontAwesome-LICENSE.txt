@@ -1,0 +1,9 @@
+Font Awesome Free 6 (fa-solid-900.ttf)
+Copyright (c) Fonticons, Inc. - https://fontawesome.com
+
+Font Awesome Free is free, open source, and GPL friendly:
+- Icons: CC BY 4.0 License (https://creativecommons.org/licenses/by/4.0/)
+- Fonts: SIL OFL 1.1 License (https://scripts.sil.org/OFL)
+- Code:  MIT License (https://opensource.org/licenses/MIT)
+
+Full terms: https://fontawesome.com/license/free

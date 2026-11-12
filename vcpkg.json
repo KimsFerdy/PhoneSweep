@@ -1,0 +1,19 @@
+{
+  "name": "phonesweep",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "dx11-binding",
+        "win32-binding",
+        "freetype"
+      ]
+    },
+    "stb",
+    "nlohmann-json",
+    "doctest"
+  ],
+  "builtin-baseline": "177e8175121536d414f405ed8b3099b325a42638"
+}

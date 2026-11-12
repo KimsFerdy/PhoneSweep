@@ -1,0 +1,19 @@
+# Build output (includes vcpkg_installed)
+build/
+out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+CMakeUserPresets.json
+
+# Runtime artifacts
+*.log
+imgui.ini
+
+# Private planning docs (kept locally, not published)
+PhoneSweep_ClaudeCode_Prompt.md
+PhoneSweep_UI_Spec.md
+dist/
