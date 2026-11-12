@@ -165,6 +165,19 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
             m_dup->done = false;
             m_groups = std::move(m_dup->groups);
             m_ticked.assign(m_groups.size(), true); // every group pre-selected; the keeper is suggested per group
+            if (m_autoCompare == "selftest") {
+                // Dev: open the group made of throwaway files only, and delete its extra copy at once.
+                for (size_t g = 0; g < m_groups.size(); ++g) {
+                    const bool allTest = std::ranges::all_of(m_groups[g].files,
+                        [](const DupFile& f) { return f.path.find("/PhoneSweepSelfTest/") != std::string::npos; });
+                    if (allTest) {
+                        m_compare.Open(static_cast<int>(g));
+                        m_compare.SendDelete(ctx, m_groups[g]);
+                        break;
+                    }
+                }
+                m_autoCompare.clear();
+            }
             if (!m_autoCompare.empty()) {
                 for (size_t g = 0; g < m_groups.size(); ++g) {
                     const FileEntry* e = Lookup(ctx, m_groups[g].files[0].path);
@@ -272,6 +285,14 @@ void CleanupPage::DrawDuplicates(AppContext& ctx)
         m_confirmOpen = true;
     }
     ImGui::Dummy(ImVec2(0, S(4)));
+    if (ctx.deleteRunning) {
+        // Visible feedback while the phone deletes (the rows drop out when it's done).
+        ui::Spinner(S(7), S(2), Danger);
+        ImGui::SameLine(0, S(10));
+        ImGui::AlignTextToFramePadding();
+        ui::ColoredText(Danger, "Deleting from the phone\xE2\x80\xA6 the copies disappear from this list when they're gone.");
+        ImGui::Dummy(ImVec2(0, S(2)));
+    }
 
     // Flattened rows: group header + one row per copy.
     struct Row {

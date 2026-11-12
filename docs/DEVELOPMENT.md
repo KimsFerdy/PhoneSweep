@@ -104,6 +104,8 @@ These touch only throwaway files they create, and clean up afterwards. Results g
 | `--files=grid,images,camera,preview` | Files page presets |
 | `--files=dups,junk,compress,restore,archives,wifi,running,battery,uninstall` | Page/tab presets (`restore` runs the read-only comparison, `uninstall` only opens the dialog) |
 | `--files=dups:image\|video\|audio\|text\|any` | Find duplicates, then open the first group of that kind in the compare window |
+| `--files=dups:selftest` | Find duplicates (over 1 MB), then delete the extra copy of a group made **only** of files under `PhoneSweepSelfTest/` (throwaway files you created) |
+| `--files=pvwin` / `--files=menu` | Files: open the big preview on the first file / open the right-click menu on the first row |
 | `--pretend-version=0.9.0` | Run as an older version, so the update check finds the real latest release |
 | `--update-kind=inno\|inno-all\|msi\|portable` | Override the detected installation type |
 | `--play-test=<file>` | Can Windows (Media Foundation) play this audio file? Exit code 0 = yes |

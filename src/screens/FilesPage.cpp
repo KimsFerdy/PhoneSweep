@@ -230,6 +230,10 @@ void FilesPage::Draw(AppContext& ctx)
         m_lastRebuild = now;
     }
 
+    if (m_presetWindow == 1 && !m_view.empty()) {
+        m_previewWin.Open(store.Files()[m_view.front()].path);
+        m_presetWindow = 0;
+    }
     HandleKeys(ctx);
 
     const float drawerW = m_preview >= 0 ? S(340) : 0.0f;
@@ -269,6 +273,9 @@ void FilesPage::Draw(AppContext& ctx)
         ImGui::SameLine(0, S(12));
         DrawDrawer(ctx, h);
     }
+    // Windows of the right-click menu (drawn at page level, every frame).
+    m_previewWin.Draw(ctx, m_view);
+    m_deleter.Draw(ctx);
 }
 
 void FilesPage::DrawStatusArea(AppContext& ctx, float height)
@@ -586,8 +593,13 @@ void FilesPage::HandleKeys(AppContext& ctx)
         else
             store.ClearSelection();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && m_focusRow >= 0 && m_focusRow < static_cast<int>(m_view.size()))
-        store.SetSelected(m_view[m_focusRow], !store.IsSelected(m_view[m_focusRow]));
+    // Space = preview (like Explorer's preview / Quick Look): the drawer's file, else the focused row.
+    if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
+        if (m_preview >= 0 && static_cast<size_t>(m_preview) < store.Files().size())
+            m_previewWin.Open(store.Files()[static_cast<size_t>(m_preview)].path);
+        else if (m_focusRow >= 0 && m_focusRow < static_cast<int>(m_view.size()))
+            m_previewWin.Open(store.Files()[m_view[m_focusRow]].path);
+    }
 }
 
 void FilesPage::HandleFocusRequest(AppContext& ctx)
@@ -608,6 +620,7 @@ void FilesPage::HandleFocusRequest(AppContext& ctx)
         RebuildView(ctx.files);
         if (has("preview") && !m_view.empty())
             m_preview = m_view.front();
+        m_presetWindow = has("pvwin") ? 1 : has("menu") ? 2 : 0; // opened once the view exists
         if (has("save")) { // queue the first 6 files of the view, then show the queue
             for (size_t i = 0; i < std::min<size_t>(6, m_view.size()); ++i)
                 ctx.requestSaveFiles.push_back(m_view[i]);
@@ -732,6 +745,12 @@ void FilesPage::DrawList(AppContext& ctx, float height)
             }
             if (prot && ImGui::IsItemHovered())
                 ImGui::SetTooltip("Protected (%s): never touched by Nuke unless unlocked", ProtectionName(e.protection));
+            if (m_presetWindow == 2 && row == 0) { // dev: show the right-click menu
+                m_menuTargets = { fi };
+                ImGui::OpenPopup("##filemenu");
+                m_presetWindow = 0;
+            }
+            ContextMenu(ctx, fi);
             DrawCheckBox(dl, ImVec2(rowMin.x, rowMin.y + (rowH - S(15)) * 0.5f), S(15), selected);
 
             auto cellText = [&](const std::string& s, const ImVec4& col) {
@@ -808,6 +827,7 @@ void FilesPage::DrawGrid(AppContext& ctx, float height)
                 if (hovered)
                     ImGui::SetItemTooltip("%s\n%s \xC2\xB7 %s", std::string(e.Name()).c_str(), ui::Bytes(e.size).c_str(),
                         ui::Date(e.mtime).c_str());
+                ContextMenu(ctx, fi);
 
                 const ImVec2 q(p.x + tileW, p.y + tileH);
                 const ImVec4 cat = ui::CategoryColor(static_cast<uint8_t>(e.category));
@@ -867,9 +887,10 @@ void FilesPage::DrawSelectionBar(AppContext& ctx)
     const char* keepLabel = ICON_CHECK "  Mark as keep";
     const char* unkeepLabel = "Unmark";
     const char* saveLabel = ICON_FLOPPY "  Save selected";
+    const char* deleteLabel = ICON_TRASH "  Delete";
     const float pad = S(28);
     const float total = ui::TextWidth(saveLabel) + ui::TextWidth(keepLabel) + ui::TextWidth(unkeepLabel) + ui::TextWidth(clearLabel)
-        + pad * 4 + S(8) * 3 + S(4);
+        + ui::TextWidth(deleteLabel) + pad * 5 + S(8) * 4 + S(4);
     ImGui::SameLine(ImGui::GetContentRegionMax().x - total);
     ImGui::SetCursorPosY(midY - (ImGui::GetFrameHeight() + S(4)) * 0.5f);
     if (ui::PrimaryButton(saveLabel)) {
@@ -896,6 +917,10 @@ void FilesPage::DrawSelectionBar(AppContext& ctx)
     ImGui::SameLine(0, S(8));
     if (ui::SecondaryButton(unkeepLabel))
         applyKeep(false);
+    ImGui::SameLine(0, S(8));
+    if (ui::DangerButton(deleteLabel, {}, ctx.ActiveConnected() && !ctx.deleteRunning))
+        m_deleter.Ask(ctx, SelectedFiles(store));
+    ImGui::SetItemTooltip("Delete the selected files from the phone permanently (Nuke Protector rules apply).");
     ImGui::SameLine(0, S(8));
     if (ui::GhostButton(clearLabel))
         store.ClearSelection();
@@ -979,6 +1004,10 @@ void FilesPage::DrawDrawer(AppContext& ctx, float height)
         ctx.platform.SetClipboardText(e.path);
         ui::Toast("Copied to clipboard");
     }
+    ImGui::SameLine();
+    if (ui::GhostButton(ICON_EYE "  Preview"))
+        m_previewWin.Open(e.path);
+    ImGui::SetItemTooltip("Big preview: zoom photos, play music, read text (Space)");
 
     ImGui::Dummy(ImVec2(0, S(10)));
     const bool keep = e.flags & FileFlag_Keep;
@@ -996,6 +1025,90 @@ void FilesPage::DrawDrawer(AppContext& ctx, float height)
     ImGui::EndChild();
     ImGui::PopStyleVar();
     ImGui::PopStyleColor();
+}
+
+
+std::vector<uint32_t> FilesPage::SelectedFiles(const FileStore& store) const
+{
+    std::vector<uint32_t> out;
+    if (store.Selection().count == 0)
+        return out;
+    for (uint32_t i = 0; i < store.Files().size(); ++i)
+        if (store.IsSelected(i))
+            out.push_back(i);
+    return out;
+}
+
+void FilesPage::ContextMenu(AppContext& ctx, uint32_t fi)
+{
+    FileStore& store = ctx.files;
+    // Right-click on a selected file acts on the whole selection, otherwise on that file.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        m_menuTargets = store.IsSelected(fi) ? SelectedFiles(store) : std::vector<uint32_t>{ fi };
+        if (m_menuTargets.empty())
+            m_menuTargets = { fi };
+    }
+    if (!ImGui::BeginPopupContextItem("##filemenu"))
+        return;
+    const auto& files = store.Files();
+    std::erase_if(m_menuTargets, [&](uint32_t i) { return i >= files.size(); });
+    if (m_menuTargets.empty() || fi >= files.size()) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    const FileEntry& e = files[fi];
+    const size_t n = m_menuTargets.size();
+    const std::string many = n > 1 ? std::format(" ({})", ui::Count(n)) : std::string();
+    {
+        Font f(GetFonts().ui, FontSmall);
+        ui::DimText(n > 1 ? std::format("{} selected files", ui::Count(n)) : std::string(e.Name()));
+    }
+    ImGui::Separator();
+
+    if (ImGui::MenuItem(ICON_EYE "  Preview", "Space"))
+        m_previewWin.Open(e.path);
+    if (ImGui::MenuItem(ICON_EXTERNAL "  Open on PC", nullptr, false, PreviewKit::CanOpenOnPc(e) && (ctx.ActiveConnected() || ctx.verified.IsVerified(e.path, e.size, e.mtime))))
+        m_previewWin.Kit().OpenOnPc(ctx, e);
+    if (!PreviewKit::CanOpenOnPc(e))
+        ImGui::SetItemTooltip("Only photos, videos and music open on the PC.");
+    ImGui::Separator();
+
+    size_t unsaved = 0;
+    bool anyKeep = false;
+    for (uint32_t i : m_menuTargets) {
+        unsaved += !ctx.verified.IsVerified(files[i].path, files[i].size, files[i].mtime);
+        anyKeep |= (files[i].flags & FileFlag_Keep) != 0;
+    }
+    if (ImGui::MenuItem((ICON_FLOPPY "  Save to PC" + many).c_str(), nullptr, false, unsaved > 0)) {
+        for (uint32_t i : m_menuTargets)
+            if (!ctx.verified.IsVerified(files[i].path, files[i].size, files[i].mtime))
+                ctx.requestSaveFiles.push_back(i);
+        ui::Toast(std::format("Saving {} to the PC", unsaved == 1 ? std::string("1 file") : ui::Count(unsaved) + " files"), ui::ToastKind::Info);
+    }
+    if (unsaved == 0)
+        ImGui::SetItemTooltip("Already saved and verified on the PC.");
+    if (const auto local = n == 1 && unsaved == 0 ? ctx.verified.LocalFile(e.path) : std::nullopt) {
+        if (ImGui::MenuItem(ICON_FOLDER_OPEN "  Show saved copy"))
+            ctx.platform.OpenInExplorer(local->parent_path());
+    }
+    if (ImGui::MenuItem(anyKeep && n == 1 ? "Unmark keep" : (ICON_CHECK "  Mark as keep" + many).c_str())) {
+        const bool keep = !(anyKeep && n == 1);
+        for (uint32_t i : m_menuTargets)
+            store.SetKeep(i, keep);
+    }
+    if (ImGui::MenuItem(ICON_COPY "  Copy path", nullptr, false, n == 1)) {
+        ctx.platform.SetClipboardText(e.path);
+        ui::Toast("Copied to clipboard");
+    }
+    ImGui::Separator();
+    ImGui::PushStyleColor(ImGuiCol_Text, Danger);
+    const bool del = ImGui::MenuItem((ICON_TRASH "  Delete permanently" + many + "\xE2\x80\xA6").c_str(), nullptr, false,
+        ctx.ActiveConnected() && !ctx.deleteRunning);
+    ImGui::PopStyleColor();
+    if (del)
+        m_deleter.Ask(ctx, m_menuTargets);
+    ImGui::EndPopup();
 }
 
 } // namespace ps

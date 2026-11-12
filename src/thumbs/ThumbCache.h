@@ -94,6 +94,7 @@ private:
     static constexpr int kUploadsPerFrame = 6;
     static constexpr size_t kMaxGridTextures = 400;   // ~256x192 RGBA each, ~80 MB worst case
     static constexpr size_t kMaxPreviewTextures = 16; // drawer + duplicate compare columns
+    static constexpr size_t kMaxFullTextures = 3;     // file preview window, up to 2048 px (16 MB each)
 };
 
 } // namespace ps

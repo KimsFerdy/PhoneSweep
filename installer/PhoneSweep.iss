@@ -1,8 +1,8 @@
 ; Inno Setup script for PhoneSweep (https://jrsoftware.org/isinfo.php).
-; Built by package.ps1:  ISCC /DAppVersion=1.1.0 /DSourceDir=<staged folder> installer\PhoneSweep.iss
+; Built by package.ps1:  ISCC /DAppVersion=1.1.1 /DSourceDir=<staged folder> installer\PhoneSweep.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.1.1"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\PhoneSweep-" + AppVersion + "-win64"

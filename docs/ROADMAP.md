@@ -8,7 +8,8 @@ Scan, save and clean an Android phone from a Windows PC: storage map, verified b
 
 ## v1.1
 
-- **Compare duplicates side by side:** click a duplicate group to see every copy next to each other: photos, video frames, music you can play right there, and text files rendered as text. Keep one copy, several, or all of them.
+- **Compare duplicates side by side:** click a duplicate group to see every copy next to each other: photos, video frames, music you can play right there, and text files rendered as text. Keep one copy, several, or all of them, and delete the rest right from that window.
+- **Right-click and big preview in Files:** Preview (zoomable photos, music, text, ← → to browse), Open on PC, Save to PC, Mark as keep, Copy path, Delete permanently (following Nuke Protector).
 - **Updates from inside the app:** Settings → Updates checks for new versions (also quietly once a day at startup, can be turned off), shows the release notes, downloads the right installer, checks it against GitHub's checksum, installs it and reopens PhoneSweep.
 
 ## v1.2 – v1.9: quality of life

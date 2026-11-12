@@ -34,6 +34,7 @@ Works with any Android phone (Samsung, Pixel, Xiaomi, OPPO, Motorola, ...) over 
 **See everything**
 - A full map of your storage: photos, videos, music, documents, archives, on internal storage and the SD card.
 - Thumbnails of your photos and videos, filters by folder and source (Camera, WhatsApp, Screenshots, Downloads...).
+- Right-click any file to preview it big (zoom photos, play music, read text), open it on the PC, save it, or delete it.
 - Every installed app with its size, where it came from (Play Store, other stores, sideloaded) and risk flags such as accessibility access, SMS, call log or overlay permissions.
 
 **Save what matters**
@@ -42,7 +43,7 @@ Works with any Android phone (Samsung, Pixel, Xiaomi, OPPO, Motorola, ...) over 
 - Put a backup back on the phone (or on a new phone) at any time.
 
 **Clean up safely**
-- **Duplicate finder:** identical files found by content, not by name. One copy of each always stays. Click a group to see every copy side by side (photos, video frames, music you can play, text files) and choose which ones to keep.
+- **Duplicate finder:** identical files found by content, not by name. One copy of each always stays. Click a group to see every copy side by side (photos, video frames, music you can play, text files) and delete the extra ones right there.
 - **Junk sweep:** thumbnail caches, app caches, leftovers of uninstalled apps, old statuses and logs, sorted into "safe" and "review".
 - **Compress** big camera videos and photos (dates, location and rotation kept). Choose whether the smaller copy goes on the phone, the PC, or both.
 - **Nuke:** plan a big clean-up, preview exactly what will happen, then confirm.
@@ -119,7 +120,7 @@ Check that USB debugging is on, that the cable supports data (not just charging)
 
 ## What's next
 
-- **v1.1:** compare duplicate copies side by side, and updates from inside the app.
+- **v1.1:** compare duplicate copies side by side, right-click and big preview for files, and updates from inside the app.
 - **v1.2 – v1.9:** more quality-of-life updates: polish, speed and fixes for what you report.
 - **v2.0:** upload to Google Drive, an automatic Nuke queue for files you haven't used in a while, PhoneSweep apps for Android and iPhone, PC Sweep for Windows, macOS and Linux, and PhoneSweep Watcher.
 

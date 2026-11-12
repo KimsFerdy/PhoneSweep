@@ -28,57 +28,12 @@ using namespace ps::theme;
 namespace {
 
 constexpr const char* kPopup = "##dupcompare";
-constexpr uint64_t kMaxPullBytes = 4'000'000'000ull;
-
-std::string LowerExt(std::string_view name)
-{
-    const size_t dot = name.rfind('.');
-    std::string ext = dot == std::string_view::npos ? std::string() : std::string(name.substr(dot + 1));
-    for (char& c : ext)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return ext;
-}
-
-// Media we hand to Windows' default app. Never anything that could run (exe, js, bat...).
-bool SafeToOpen(std::string_view name)
-{
-    static constexpr std::array<std::string_view, 30> kOk = { "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff",
-        "mp4", "m4v", "mkv", "mov", "3gp", "webm", "avi", "wmv", "ts", "mp3", "m4a", "aac", "wav", "ogg", "oga", "opus", "flac", "wma",
-        "amr", "mid" };
-    const std::string ext = LowerExt(name);
-    return ext.size() <= 5 && std::ranges::find(kOk, ext) != kOk.end();
-}
-
-std::string Clock(uint32_t ms)
-{
-    const uint32_t s = ms / 1000;
-    return std::format("{}:{:02}", s / 60, s % 60);
-}
-
-std::string Folder(std::string_view path)
-{
-    std::string folder(path.substr(0, path.rfind('/')));
-    if (folder.starts_with("/storage/emulated/0/"))
-        return "Internal \xC2\xB7 " + folder.substr(20);
-    if (folder == "/storage/emulated/0")
-        return "Internal storage";
-    if (folder.starts_with("/storage/")) {
-        const size_t slash = folder.find('/', 9);
-        return slash == std::string::npos ? std::string("SD card") : "SD card \xC2\xB7 " + folder.substr(slash + 1);
-    }
-    return folder;
-}
+constexpr const char* kConfirm = "Delete these copies?";
 
 } // namespace
 
-DupCompare::DupCompare()
-{
-    std::error_code ec;
-    m_tempDir = std::filesystem::temp_directory_path(ec) / L"PhoneSweep-preview";
-    std::filesystem::remove_all(m_tempDir, ec); // leftovers of an earlier session
-}
-
-DupCompare::~DupCompare() { ReleaseFiles(); }
+DupCompare::DupCompare() = default;
+DupCompare::~DupCompare() = default;
 
 void DupCompare::Open(int group)
 {
@@ -89,162 +44,10 @@ void DupCompare::Open(int group)
 void DupCompare::Close()
 {
     m_group = -1;
-    ReleaseFiles();
+    m_confirm = false;
+    m_kit.Release();
 }
 
-void DupCompare::ReleaseFiles()
-{
-    m_audio.Close();
-    for (auto& [path, p] : m_pulls)
-        if (p->job)
-            p->job->Cancel();
-    m_pulls.clear();
-    m_text.clear();
-    std::error_code ec;
-    std::filesystem::remove_all(m_tempDir, ec); // a file still open in a player just stays until next time
-}
-
-DupCompare::TextFetch& DupCompare::Text(AppContext& ctx, const FileEntry& e)
-{
-    auto [it, inserted] = m_text.try_emplace(e.path);
-    if (inserted) {
-        it->second = std::make_shared<TextFetch>();
-        auto state = it->second;
-        if (const auto local = ctx.verified.IsVerified(e.path, e.size, e.mtime) ? ctx.verified.LocalFile(e.path) : std::nullopt) {
-            // Saved on the PC: read the backup instead of the phone.
-            std::string bytes(std::min<uint64_t>(e.size, kTextPreviewBytes), '\0');
-            FILE* f = nullptr;
-            _wfopen_s(&f, local->c_str(), L"rb");
-            const size_t got = f ? fread(bytes.data(), 1, bytes.size(), f) : 0;
-            if (f)
-                fclose(f);
-            bytes.resize(got);
-            state->text = DecodeTextPreview(bytes);
-            state->unreadable = !f;
-            state->done = true;
-        } else if (ctx.adb && ctx.ActiveConnected()) {
-            auto adb = ctx.adb;
-            const std::string serial = ctx.activeSerial, path = e.path;
-            ctx.jobs.Submit("Loading preview", JobPriority::Normal, [adb, serial, path, state](Job&, std::stop_token st) {
-                const auto bytes = FetchFileHead(*adb, serial, path, kTextPreviewBytes, st);
-                std::lock_guard l(state->mutex);
-                if (bytes)
-                    state->text = DecodeTextPreview(*bytes);
-                state->unreadable = !bytes;
-                state->done = true;
-            });
-        } else {
-            state->unreadable = true;
-            state->done = true;
-        }
-    }
-    return *it->second;
-}
-
-void DupCompare::RequestLocal(AppContext& ctx, const FileEntry& e, After after)
-{
-    if (auto it = m_pulls.find(e.path); it != m_pulls.end()) {
-        std::lock_guard l(it->second->mutex);
-        if (!it->second->done)
-            return; // already on its way
-        if (it->second->ok) {
-            it->second->after = after;
-            it->second->handled = false; // run the action again
-            return;
-        }
-    }
-    auto pull = std::make_shared<Pull>();
-    pull->after = after;
-    pull->total = e.size;
-    m_pulls[e.path] = pull;
-
-    if (const auto local = ctx.verified.IsVerified(e.path, e.size, e.mtime) ? ctx.verified.LocalFile(e.path) : std::nullopt) {
-        std::error_code ec;
-        if (std::filesystem::is_regular_file(*local, ec)) {
-            pull->local = *local;
-            pull->ok = pull->done = true;
-            return;
-        }
-    }
-    if (!ctx.adb || !ctx.ActiveConnected() || e.size > kMaxPullBytes) {
-        pull->done = true;
-        pull->error = e.size > kMaxPullBytes ? "Too big to preview" : "Phone not connected";
-        return;
-    }
-    std::error_code ec;
-    std::filesystem::create_directories(m_tempDir, ec);
-    const std::string ext = LowerExt(e.Name());
-    const auto local = m_tempDir / Widen(std::format("{:016x}.{}", std::hash<std::string>{}(e.path), ext));
-    auto adb = ctx.adb;
-    const std::string serial = ctx.activeSerial, path = e.path;
-    pull->job = ctx.jobs.Submit("Copying preview to the PC", JobPriority::Normal, [adb, serial, path, local, pull](Job& job, std::stop_token st) {
-        const auto r = PullToFile(*adb, serial, path, local, st, [&](uint64_t b) {
-            std::lock_guard l(pull->mutex);
-            pull->bytes = b;
-            if (pull->total)
-                job.SetProgress(static_cast<float>(b) / static_cast<float>(pull->total));
-        });
-        std::lock_guard l(pull->mutex);
-        pull->ok = r.ok;
-        pull->error = r.ok ? std::string() : r.error;
-        pull->local = local;
-        pull->done = true;
-    });
-}
-
-void DupCompare::PumpPulls(AppContext& ctx)
-{
-    for (auto& [path, p] : m_pulls) {
-        std::filesystem::path local;
-        After after;
-        {
-            std::lock_guard l(p->mutex);
-            if (!p->done || p->handled)
-                continue;
-            p->handled = true;
-            if (!p->ok) {
-                ui::Toast(std::format("Couldn't copy the file: {}", p->error), ui::ToastKind::Error);
-                continue;
-            }
-            local = p->local;
-            after = p->after;
-        }
-        if (after == After::Play) {
-            if (m_audio.Play(local, path))
-                continue;
-            // No Windows codec (opus / ogg / amr on many PCs): play a WAV made by ffmpeg instead.
-            const bool converted = local.extension() == L".wav" && local.parent_path() == m_tempDir;
-            if (ctx.ffmpeg && !converted) {
-                const auto wav = m_tempDir / Widen(std::format("{:016x}.wav", std::hash<std::string>{}(path)));
-                {
-                    std::lock_guard l(p->mutex);
-                    p->done = p->ok = p->handled = false;
-                    p->converting = true;
-                }
-                std::error_code ec;
-                std::filesystem::create_directories(m_tempDir, ec);
-                const auto ffmpeg = *ctx.ffmpeg;
-                auto pull = p;
-                p->job = ctx.jobs.Submit("Preparing audio preview", JobPriority::Normal, [ffmpeg, local, wav, pull](Job&, std::stop_token st) {
-                    const std::vector<std::string> args = { "-hide_banner", "-loglevel", "error", "-y", "-i", Narrow(local.wstring()), "-vn", "-t",
-                        "1200", "-ac", "2", "-ar", "44100", "-f", "wav", Narrow(wav.wstring()) };
-                    const auto r = RunProcess(ffmpeg, args, { .timeout = 120s, .cancel = st, .logName = "ffmpeg" });
-                    std::lock_guard l(pull->mutex);
-                    pull->ok = r.ok();
-                    pull->error = r.ok() ? std::string() : "ffmpeg couldn't read it";
-                    pull->local = wav;
-                    pull->converting = false;
-                    pull->done = true;
-                });
-                continue;
-            }
-            ui::Toast("Windows can't play this format here; opening it in your player instead", ui::ToastKind::Info);
-            ctx.platform.OpenInExplorer(local);
-        } else {
-            ctx.platform.OpenInExplorer(local); // ShellExecute "open": the default app for this media type
-        }
-    }
-}
 
 void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vector<bool>& ticked, const Lookup& lookup)
 {
@@ -262,13 +65,7 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
         ImGui::OpenPopup(kPopup);
         m_justOpened = false;
     }
-    PumpPulls(ctx);
-    if (m_audio.TakeFailure()) {
-        const auto file = m_audio.File();
-        m_audio.Close();
-        ui::Toast("Windows can't play this format here; opening it in your player instead", ui::ToastKind::Info);
-        ctx.platform.OpenInExplorer(file);
-    }
+    m_kit.Pump(ctx);
 
     const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
     ImGui::SetNextWindowSize(ImVec2(std::max(S(640), work.x - S(80)), std::max(S(480), work.y - S(80))), ImGuiCond_Always);
@@ -308,7 +105,7 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
             go = m_group + 1;
         ImGui::SetItemTooltip("Next group (\xE2\x86\x92)");
         ImGui::SameLine(0, S(12));
-        if (ui::GhostButton(ICON_XMARK "##closecmp", ImVec2(bw, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (ui::GhostButton(ICON_XMARK "##closecmp", ImVec2(bw, 0)) || (ImGui::IsKeyPressed(ImGuiKey_Escape) && !m_confirm && !ImGui::IsPopupOpen(kConfirm))) {
             ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
             Close();
@@ -317,8 +114,8 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
     }
     {
         Font f(GetFonts().ui, FontSmall);
-        ui::DimText("These files are byte-for-byte identical (same MD5). Choose which copies stay. "
-                    "Nothing is deleted here: the Delete button in the list does that, after asking.");
+        ui::DimText("These files are byte-for-byte identical (same MD5). Mark the copies you don't need with Delete, "
+                    "then press \"Delete now\" (or use Delete in the list for all groups at once).");
     }
     ImGui::Dummy(ImVec2(0, S(4)));
 
@@ -346,6 +143,10 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
         const size_t kept = tick ? grp.KeptCount() : n;
         Font f(GetFonts().uiStrong, FontBase);
         ImGui::AlignTextToFramePadding();
+        if (!m_notice.empty() && ImGui::GetTime() < m_noticeUntil) {
+            ui::ColoredText(m_notice.starts_with(ICON_WARNING) ? Warning : Success, m_notice);
+            ImGui::SameLine(0, S(8));
+        }
         if (tick && kept < n)
             ui::ColoredText(Danger, std::format("Keeps {}  \xC2\xB7  deletes {}  \xC2\xB7  frees {}", kept, n - kept, ui::Bytes(grp.Reclaimable())));
         else
@@ -353,13 +154,37 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
     }
     ImGui::SameLine();
     {
+        // Deletes sent from here: wait for the phone, then they drop out of the group.
+        const bool deleting = !m_deleting.empty() && (ctx.deleteRunning || ctx.requestDelete || ImGui::GetFrameCount() - m_sentFrame < 3);
+        if (!m_deleting.empty() && !deleting) {
+            // Count what really left the phone (the file list drops deleted files).
+            size_t still = 0;
+            for (const auto& fe : ctx.files.Files())
+                still += std::ranges::find(m_deleting, fe.path) != m_deleting.end();
+            const size_t gone = m_deleting.size() - std::min(still, m_deleting.size());
+            m_notice = gone == 0 ? std::string(ICON_WARNING "  Nothing was deleted (see the message)")
+                                 : std::format(ICON_CIRCLE_CHECK "  Deleted {} {} · freed {}", gone, gone == 1 ? "copy" : "copies",
+                                       ui::Bytes(m_deletingBytes / m_deleting.size() * gone));
+            m_noticeUntil = ImGui::GetTime() + 5.0;
+            m_deleting.clear();
+        }
+        const size_t toDelete = tick ? n - std::min(n, grp.KeptCount()) : 0;
+        const std::string delLabel = deleting ? std::string("Deleting\xE2\x80\xA6")
+                                              : std::format(ICON_TRASH "  Delete now ({})", ui::Bytes(grp.size * toDelete));
         const char* keepAll = ICON_CHECK "  Keep all copies";
-        const char* done = "Done";
-        const float w = ui::TextWidth(keepAll) + ui::TextWidth(done) + S(80);
+        const char* done = "Close";
+        const float w = ui::TextWidth(keepAll) + ui::TextWidth(delLabel) + ui::TextWidth(done) + S(110);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - w));
-        if (ui::SecondaryButton(keepAll, {}, tick))
+        if (ui::SecondaryButton(keepAll, {}, tick && !deleting))
             tick = false;
         ImGui::SetItemTooltip("Skip this group: nothing in it is deleted.");
+        ImGui::SameLine();
+        if (ui::DangerButton(delLabel.c_str(), {}, toDelete > 0 && !deleting && !ctx.deleteRunning && ctx.ActiveConnected()))
+            m_confirm = true;
+        if (toDelete == 0)
+            ImGui::SetItemTooltip("Mark at least one copy with Delete first.");
+        else if (!ctx.ActiveConnected())
+            ImGui::SetItemTooltip("The phone isn't connected.");
         ImGui::SameLine();
         if (ui::PrimaryButton(done)) {
             ImGui::CloseCurrentPopup();
@@ -378,10 +203,58 @@ void DupCompare::Draw(AppContext& ctx, std::vector<DupGroup>& groups, std::vecto
             go = m_group + 1;
     }
     ticked[static_cast<size_t>(m_group)] = tick;
+    DrawConfirm(ctx, grp);
     if (go != m_group) {
-        m_audio.Close();
+        m_kit.StopAudio();
         m_group = go;
     }
+    ImGui::EndPopup();
+}
+
+void DupCompare::SendDelete(AppContext& ctx, const DupGroup& grp)
+{
+    DeleteRequest req;
+    req.paths = DuplicateDeleteList({ grp }, { true }, ctx.files);
+    if (req.paths.empty())
+        return;
+    for (size_t k = 0; k < grp.files.size(); ++k)
+        if (grp.Keeps(k))
+            req.mustExist.push_back(grp.files[k].path);
+    req.label = req.paths.size() == 1 ? "duplicate copy" : "duplicate copies";
+    m_deleting = req.paths;
+    m_deletingBytes = grp.size * req.paths.size();
+    m_sentFrame = ImGui::GetFrameCount();
+    ctx.requestDelete = std::move(req);
+}
+
+void DupCompare::DrawConfirm(AppContext& ctx, DupGroup& grp)
+{
+    if (m_confirm) {
+        ImGui::OpenPopup(kConfirm);
+        m_confirm = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(S(480), 0));
+    if (!ImGui::BeginPopupModal(kConfirm, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
+        return;
+    const auto paths = DuplicateDeleteList({ grp }, { true }, ctx.files);
+    ImGui::TextWrapped("Delete %zu %s (%s) from the phone? This can't be undone.", paths.size(), paths.size() == 1 ? "copy" : "copies",
+        ui::Bytes(grp.size * paths.size()).c_str());
+    {
+        Font f(GetFonts().ui, FontSmall);
+        for (const auto& p : paths)
+            ui::ColoredText(Danger, std::string(ICON_TRASH "  ") + FolderCaption(p) + "/" + p.substr(p.rfind('/') + 1));
+        const size_t kept = grp.files.size() - paths.size();
+        ui::DimText(std::format("{} {} stay{}; PhoneSweep checks {} still there first.", kept, kept == 1 ? "copy" : "copies", kept == 1 ? "s" : "",
+            kept == 1 ? "it's" : "they're"));
+    }
+    ImGui::Dummy(ImVec2(0, S(8)));
+    if (ui::DangerButton(ICON_TRASH "  Delete", {}, !paths.empty())) {
+        SendDelete(ctx, grp);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ui::SecondaryButton("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
@@ -409,9 +282,24 @@ void DupCompare::DrawColumn(AppContext& ctx, DupGroup& grp, bool& tick, size_t i
     const ImVec2 a = ImGui::GetCursorScreenPos();
     const ImVec2 b(a.x + w, a.y + ph);
     if (e)
-        DrawPreview(ctx, *e, a, b);
+        m_kit.Draw(ctx, *e, a, b);
     else
         ImGui::GetWindowDrawList()->AddRectFilled(a, b, U32(Border, 0.4f), S(6));
+    {
+        // Banner across the top of the preview: what happens to this copy.
+        const bool deleting = std::ranges::find(m_deleting, grp.files[i].path) != m_deleting.end();
+        if (!kept || deleting) {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            Font f(GetFonts().uiStrong, FontSmall);
+            const std::string label = deleting ? std::string("Deleting from the phone\xE2\x80\xA6") : std::string(ICON_TRASH "  WILL BE DELETED");
+            const float bh = ImGui::GetTextLineHeight() + S(10);
+            dl->AddRectFilled(a, ImVec2(b.x, a.y + bh), U32(Danger, deleting ? 0.95f : 0.85f), S(6), ImDrawFlags_RoundCornersTop);
+            const ImVec2 ts = ImGui::CalcTextSize(label.c_str());
+            dl->AddText(ImVec2(a.x + (w - ts.x) * 0.5f, a.y + S(5)), U32(Background), label.c_str());
+            if (deleting)
+                dl->AddRectFilled(ImVec2(a.x, a.y + bh), b, U32(Background, 0.45f));
+        }
+    }
     ImGui::SetCursorScreenPos(ImVec2(a.x, b.y + S(8)));
 
     // Name, folder, details.
@@ -426,7 +314,7 @@ void DupCompare::DrawColumn(AppContext& ctx, DupGroup& grp, bool& tick, size_t i
     {
         Font f(GetFonts().ui, FontSmall);
         ImGui::PushClipRect(ImGui::GetCursorScreenPos(), ImVec2(a.x + w, ImGui::GetCursorScreenPos().y + S(40)), true);
-        ui::DimText(Folder(df.path));
+        ui::DimText(FolderCaption(df.path));
         ImGui::PopClipRect();
         std::string details = ui::Date(df.mtime);
         if (e && e->source != Source::Other)
@@ -474,162 +362,6 @@ void DupCompare::DrawColumn(AppContext& ctx, DupGroup& grp, bool& tick, size_t i
     if (keepFlag)
         ImGui::SetItemTooltip("Marked KEEP: never deleted.");
     ImGui::EndChild();
-}
-
-void DupCompare::DrawPreview(AppContext& ctx, const FileEntry& e, ImVec2 a, ImVec2 b)
-{
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float w = b.x - a.x;
-    PreviewKind kind = PreviewKindFor(e);
-    const float buttonsH = (kind == PreviewKind::Image || kind == PreviewKind::Video || kind == PreviewKind::Audio) ? ImGui::GetFrameHeight() + S(8) : 0.0f;
-    const ImVec2 pb(b.x, b.y - buttonsH);
-
-    if (kind == PreviewKind::Other) {
-        // Unknown type: peek at it and show it as text when it is text.
-        TextFetch& t = Text(ctx, e);
-        std::lock_guard l(t.mutex);
-        if (t.done && t.text)
-            kind = PreviewKind::Text;
-    }
-
-    switch (kind) {
-    case PreviewKind::Image:
-    case PreviewKind::Video: {
-        ThumbView view = ctx.thumbs.Request(e, ThumbVariant::Preview);
-        if (view.state != ThumbState::Ready)
-            if (const ThumbView grid = ctx.thumbs.Peek(e, ThumbVariant::Grid); grid.state == ThumbState::Ready)
-                view = grid;
-        DrawThumbArea(dl, a, pb, e, view, false, S(6), 56.0f);
-        if (view.state == ThumbState::Unsupported) {
-            Font f(GetFonts().ui, FontSmall);
-            const char* msg = e.category == Category::Videos ? "Install ffmpeg for video frames" : "No preview for this format";
-            const ImVec2 ts = ImGui::CalcTextSize(msg);
-            dl->AddText(ImVec2(a.x + (w - ts.x) * 0.5f, pb.y - ts.y - S(8)), U32(TextDim), msg);
-        }
-        break;
-    }
-    case PreviewKind::Audio: {
-        dl->AddRectFilled(a, pb, U32(ui::CategoryColor(static_cast<uint8_t>(Category::Music)), 0.08f), S(6));
-        const bool loaded = m_audio.Key() == e.path;
-        const bool playing = loaded && m_audio.IsPlaying();
-        {
-            Font f(GetFonts().ui, 56.0f);
-            const char* icon = ICON_MUSIC;
-            const ImVec2 ts = ImGui::CalcTextSize(icon);
-            const float pulse = playing ? 0.75f + 0.25f * std::sin(static_cast<float>(ImGui::GetTime()) * 4.0f) : 0.85f;
-            dl->AddText(ImVec2(a.x + (w - ts.x) * 0.5f, (a.y + pb.y - ts.y) * 0.5f - S(10)),
-                U32(ui::CategoryColor(static_cast<uint8_t>(Category::Music)), pulse), icon);
-        }
-        if (loaded) {
-            // Progress line + time; click to seek.
-            const uint32_t pos = m_audio.PositionMs(), len = m_audio.LengthMs();
-            const float y = pb.y - S(26);
-            const ImVec2 l0(a.x + S(14), y), l1(pb.x - S(14), y + S(4));
-            dl->AddRectFilled(l0, l1, U32(Border), S(2));
-            if (len)
-                dl->AddRectFilled(l0, ImVec2(l0.x + (l1.x - l0.x) * std::min(1.0f, static_cast<float>(pos) / static_cast<float>(len)), l1.y), U32(Accent), S(2));
-            ImGui::SetCursorScreenPos(ImVec2(l0.x, y - S(6)));
-            if (ImGui::InvisibleButton("##seek", ImVec2(l1.x - l0.x, S(16))) && len)
-                m_audio.SeekMs(static_cast<uint32_t>((ImGui::GetIO().MousePos.x - l0.x) / (l1.x - l0.x) * static_cast<float>(len)));
-            Font f(GetFonts().ui, FontSmall);
-            const std::string t = std::format("{} / {}", Clock(pos), Clock(len));
-            dl->AddText(ImVec2(l0.x, y + S(8)), U32(TextDim), t.c_str());
-        }
-        break;
-    }
-    case PreviewKind::Text: {
-        TextFetch& t = Text(ctx, e);
-        std::lock_guard l(t.mutex);
-        dl->AddRectFilled(a, pb, U32(Background), S(6));
-        if (!t.done) {
-            ImGui::SetCursorScreenPos(ImVec2(a.x + w * 0.5f - S(10), (a.y + pb.y) * 0.5f - S(10)));
-            ui::Spinner(S(10), S(2.5f), Accent);
-        } else if (!t.text) {
-            Font f(GetFonts().ui, FontSmall);
-            const char* msg = t.unreadable ? "Couldn't read this file" : "Not a text file";
-            const ImVec2 ts = ImGui::CalcTextSize(msg);
-            dl->AddText(ImVec2(a.x + (w - ts.x) * 0.5f, (a.y + pb.y - ts.y) * 0.5f), U32(TextDim), msg);
-        } else {
-            ImGui::SetCursorScreenPos(a);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, Background);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(8), S(6)));
-            ImGui::BeginChild("##text", ImVec2(w, pb.y - a.y), ImGuiChildFlags_AlwaysUseWindowPadding);
-            {
-                Font f(GetFonts().mono, FontSmall);
-                ImGui::PushTextWrapPos(0.0f);
-                if (t.text->empty())
-                    ui::DimText("(empty file)");
-                else
-                    ImGui::TextUnformatted(t.text->data(), t.text->data() + t.text->size());
-                ImGui::PopTextWrapPos();
-                if (e.size > kTextPreviewBytes)
-                    ui::DimText(std::format("\xE2\x80\xA6 first {} of {} shown", ui::Bytes(kTextPreviewBytes), ui::Bytes(e.size)));
-            }
-            ImGui::EndChild();
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor();
-        }
-        break;
-    }
-    case PreviewKind::Other: {
-        DrawThumbArea(dl, a, pb, e, ThumbView{}, false, S(6), 56.0f);
-        TextFetch& t = Text(ctx, e);
-        std::lock_guard l(t.mutex);
-        Font f(GetFonts().ui, FontSmall);
-        const char* msg = t.done ? "No preview for this type of file" : "Looking inside\xE2\x80\xA6";
-        const ImVec2 ts = ImGui::CalcTextSize(msg);
-        dl->AddText(ImVec2(a.x + (w - ts.x) * 0.5f, pb.y - ts.y - S(10)), U32(TextDim), msg);
-        break;
-    }
-    }
-
-    if (buttonsH > 0) {
-        ImGui::SetCursorScreenPos(ImVec2(a.x, pb.y + S(8)));
-        DrawMediaButtons(ctx, e, w);
-    }
-    ImGui::SetCursorScreenPos(ImVec2(a.x, b.y));
-}
-
-void DupCompare::DrawMediaButtons(AppContext& ctx, const FileEntry& e, float width)
-{
-    std::shared_ptr<Pull> pull;
-    if (auto it = m_pulls.find(e.path); it != m_pulls.end())
-        pull = it->second;
-    bool busy = false;
-    float progress = 0;
-    After busyAfter = After::OpenOnPc;
-    bool converting = false;
-    if (pull) {
-        std::lock_guard l(pull->mutex);
-        busy = !pull->done;
-        converting = pull->converting;
-        busyAfter = pull->after;
-        progress = pull->total ? static_cast<float>(pull->bytes) / static_cast<float>(pull->total) : 0.0f;
-    }
-    const bool canOpen = SafeToOpen(e.Name());
-
-    if (e.category == Category::Music) {
-        const bool playing = m_audio.Key() == e.path && m_audio.IsPlaying();
-        if (busy && busyAfter == After::Play) {
-            ui::SecondaryButton(converting ? "Preparing…##play" : std::format("Loading {:.0f}%##play", progress * 100.0f).c_str(), ImVec2(S(110), 0), false);
-        } else if (playing) {
-            if (ui::PrimaryButton(ICON_STOP "  Stop", ImVec2(S(110), 0)))
-                m_audio.Close();
-        } else if (ui::PrimaryButton(ICON_PLAY "  Play", ImVec2(S(110), 0), canOpen)) {
-            m_audio.Close();
-            RequestLocal(ctx, e, After::Play);
-        }
-        ImGui::SameLine(0, S(6));
-    }
-    const std::string openLabel = busy && busyAfter == After::OpenOnPc ? std::format("Copying {:.0f}%##open", progress * 100.0f)
-        : e.category == Category::Videos                               ? std::string(ICON_PLAY "  Play on PC")
-                                                                       : std::string(ICON_EXTERNAL "  Open on PC");
-    if (ui::SecondaryButton(openLabel.c_str(), {}, canOpen && !busy))
-        RequestLocal(ctx, e, After::OpenOnPc);
-    if (canOpen)
-        ImGui::SetItemTooltip("%s", ctx.verified.IsVerified(e.path, e.size, e.mtime) ? "Opens your saved copy in the default app."
-                                                                                     : "Copies it to a temporary folder and opens it in the default app.");
-    (void)width;
 }
 
 } // namespace ps

@@ -4,8 +4,8 @@
 // Keep in sync with project(VERSION) in CMakeLists.txt and res/PhoneSweep.manifest.
 namespace ps {
 
-inline constexpr const char* kAppVersion = "1.1.0";
-inline constexpr const char* kAppNameVersion = "PhoneSweep v1.1.0";
+inline constexpr const char* kAppVersion = "1.1.1";
+inline constexpr const char* kAppNameVersion = "PhoneSweep v1.1.1";
 
 inline constexpr const char* kRepoUrl = "https://github.com/KimsFerdy/PhoneSweep";
 inline constexpr const char* kIssuesUrl = "https://github.com/KimsFerdy/PhoneSweep/issues";

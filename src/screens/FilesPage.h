@@ -1,4 +1,6 @@
 #pragma once
+#include "screens/FileDeleter.h"
+#include "screens/FilePreview.h"
 #include "screens/IScreen.h"
 
 #include <cstdint>
@@ -28,6 +30,9 @@ private:
     void DrawStatusArea(AppContext& ctx, float height);
     void HandleKeys(AppContext& ctx);
     void HandleFocusRequest(AppContext& ctx);
+    // Right-click menu on a row / tile (call right after the item).
+    void ContextMenu(AppContext& ctx, uint32_t fileIndex);
+    std::vector<uint32_t> SelectedFiles(const FileStore& store) const;
 
     void RebuildView(const FileStore& store);
     void Sort(const FileStore& store);
@@ -60,6 +65,12 @@ private:
     int m_focusRow = -1;
     int64_t m_preview = -1;  // file index shown in the drawer
     int m_scrollToRow = -1;
+
+    // v1.1: right-click menu, preview window, delete permanently.
+    std::vector<uint32_t> m_menuTargets; // what the open menu acts on
+    FilePreview m_previewWin;
+    FileDeleter m_deleter;
+    int m_presetWindow = 0; // dev --files=pvwin / menu
 };
 
 } // namespace ps

@@ -197,11 +197,12 @@ void ThumbCache::WorkerLoop(const std::shared_ptr<Shared>& shared, std::stop_tok
 void ThumbCache::Evict()
 {
     // Count textures per variant; drop least-recently-used ones not drawn last frame.
-    size_t grid = 0, preview = 0;
+    size_t counts[3] = { 0, 0, 0 }; // per ThumbVariant
+    static constexpr size_t kCaps[3] = { kMaxGridTextures, kMaxPreviewTextures, kMaxFullTextures };
     for (const auto& [k, e] : m_entries)
         if (e.texture)
-            (e.variant == ThumbVariant::Grid ? grid : preview)++;
-    if (grid <= kMaxGridTextures && preview <= kMaxPreviewTextures)
+            counts[static_cast<size_t>(e.variant)]++;
+    if (counts[0] <= kCaps[0] && counts[1] <= kCaps[1] && counts[2] <= kCaps[2])
         return;
 
     std::vector<std::pair<uint64_t, uint64_t>> lru; // (lastUsedFrame, key)
@@ -211,8 +212,8 @@ void ThumbCache::Evict()
     std::ranges::sort(lru);
     for (const auto& [frame, key] : lru) {
         auto it = m_entries.find(key);
-        auto& count = it->second.variant == ThumbVariant::Grid ? grid : preview;
-        const size_t cap = it->second.variant == ThumbVariant::Grid ? kMaxGridTextures : kMaxPreviewTextures;
+        auto& count = counts[static_cast<size_t>(it->second.variant)];
+        const size_t cap = kCaps[static_cast<size_t>(it->second.variant)];
         if (count <= cap)
             continue;
         m_platform.DestroyTexture(it->second.texture);

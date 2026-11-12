@@ -13,8 +13,8 @@ namespace ps {
 
 class AdbClient;
 
-enum class ThumbVariant : uint8_t { Grid, Preview };
-constexpr int MaxEdge(ThumbVariant v) { return v == ThumbVariant::Grid ? 256 : 640; }
+enum class ThumbVariant : uint8_t { Grid, Preview, Full }; // Full: the file preview window (zoomable)
+constexpr int MaxEdge(ThumbVariant v) { return v == ThumbVariant::Grid ? 256 : v == ThumbVariant::Preview ? 640 : 2048; }
 
 struct ThumbRequest {
     std::string serial;

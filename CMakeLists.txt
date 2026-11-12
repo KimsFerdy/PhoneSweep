@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(PhoneSweep VERSION 1.1.0 LANGUAGES CXX RC)
+project(PhoneSweep VERSION 1.1.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -104,6 +104,9 @@ add_executable(PhoneSweep WIN32
     src/screens/BackupPage.cpp
     src/screens/WirelessDialog.cpp
     src/screens/DupCompare.cpp
+    src/screens/PreviewKit.cpp
+    src/screens/FilePreview.cpp
+    src/screens/FileDeleter.cpp
     src/platform/AudioPlayer.cpp
     src/thumbs/ThumbCache.cpp
     res/PhoneSweep.manifest
